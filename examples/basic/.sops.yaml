@@ -1,0 +1,8 @@
+keys:
+  - &main_key age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # Replace with your age key
+
+creation_rules:
+  - path_regex: secrets\.ya?ml$
+    key_groups:
+    - age:
+      - *main_key

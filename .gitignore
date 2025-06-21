@@ -1,0 +1,26 @@
+# Nix build results
+result
+result-*
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local development
+.envrc
+.direnv/
+
+# Secret files (examples should not contain real secrets)
+secrets.yaml
+*.age
+keys.txt
+
+# Temporary files
+*.tmp
+temp_*
