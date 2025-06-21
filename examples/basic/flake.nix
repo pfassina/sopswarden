@@ -12,20 +12,17 @@
       modules = [
         sopswarden.nixosModules.default
         ({ pkgs, secrets, ... }: {
-          # Configure rbw for Bitwarden access
-          programs.rbw = {
-            enable = true;
-            settings = {
-              email = "your-email@example.com";
-              # base_url = "https://your-bitwarden-server.com";  # Uncomment for self-hosted
-              lock_timeout = 3600;
-              pinentry = pkgs.pinentry-curses;
-            };
-          };
+          # Note: Configure rbw using Home Manager or manually:
+          # programs.rbw = { enable = true; settings = { email = "..."; }; };
 
           # Enable sopswarden
           services.sopswarden = {
             enable = true;
+            
+            # Use the included secrets.nix file
+            secretsFile = ./secrets.nix;
+            # Override hashFile for the example
+            hashFile = "/tmp/sopswarden-basic-hash";
             
             # Define your secrets
             secrets = {
@@ -59,6 +56,11 @@
               host myapp myuser 0.0.0.0/0 md5
             '';
           };
+
+          # Minimal NixOS configuration for the example
+          system.stateVersion = "24.11";
+          boot.loader.grub.device = "/dev/sda";
+          fileSystems."/" = { device = "/dev/sda1"; fsType = "ext4"; };
         })
       ];
     };

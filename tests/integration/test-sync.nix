@@ -57,12 +57,12 @@ let
     }
   '';
 
-  # Test SOPS configuration
+  # Test SOPS configuration with valid age key
   testSopsYaml = pkgs.writeText ".sops.yaml" ''
     keys:
-      - &test_key age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
+      - &test_key age1a9agvy6fpgk59evrftrpp2679h7cuf27c5h9e5kfjczhuyrsgyhs5e4h72
     creation_rules:
-      - path_regex: test-secrets\.ya?ml$
+      - path_regex: .*\.ya?ml$
         key_groups:
         - age:
           - *test_key
@@ -74,9 +74,9 @@ let
   # Create sync script with mock rbw
   syncScript = sopswardenLib.mkSyncScript {
     inherit pkgs;
-    secretsFile = toString testSecretsNix;
-    sopsFile = "./test-secrets.yaml";
-    sopsConfigFile = toString testSopsYaml;
+    secretsFile = "/tmp/sopswarden-test/secrets.nix";
+    sopsFile = "/tmp/sopswarden-test/test-secrets.yaml";
+    sopsConfigFile = "/tmp/sopswarden-test/.sops.yaml";
     rbwCommand = "${mockRbw}/bin/mock-rbw";
     workingDirectory = "/tmp/sopswarden-test";
   };
@@ -90,6 +90,8 @@ in pkgs.stdenv.mkDerivation {
     age
     jq
     bash
+    nix      # Needed for evaluating secrets.nix
+    mockRbw  # Add the mock rbw command for testing
   ];
 
   buildCommand = ''
@@ -105,9 +107,13 @@ in pkgs.stdenv.mkDerivation {
     cp ${testSecretsNix} secrets.nix
     cp ${testSopsYaml} .sops.yaml
     
-    # Generate test age key
-    mkdir -p ~/.config/sops/age
-    echo "AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ" > ~/.config/sops/age/keys.txt
+    # Generate test age key (matching the public key in .sops.yaml)
+    export HOME=/tmp/test-home
+    mkdir -p $HOME/.config/sops/age
+    echo "AGE-SECRET-KEY-1FJL7US6NUUJAAV73AMFLXX2P7GUTS0HQUN8A36WXTULJKPWCW7ZS7SGK0G" > $HOME/.config/sops/age/keys.txt
+    
+    # Enable nix experimental features
+    export NIX_CONFIG="experimental-features = nix-command flakes"
     
     # Test 1: Check if sync script is available
     echo "📋 Test 1: Sync script availability"

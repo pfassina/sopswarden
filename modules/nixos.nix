@@ -87,7 +87,7 @@ in
 
     hashFile = mkOption {
       type = types.str;
-      default = "$(dirname ${toString cfg.secretsFile})/.last-sync-hash";
+      default = builtins.dirOf (toString cfg.secretsFile) + "/.last-sync-hash";
       description = "Path to store the last sync hash for change detection";
     };
 

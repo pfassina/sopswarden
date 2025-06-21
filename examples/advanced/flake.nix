@@ -17,16 +17,8 @@
         sopswarden.nixosModules.default
         home-manager.nixosModules.home-manager
         ({ pkgs, config, secrets, ... }: {
-          # Configure rbw for Bitwarden access
-          programs.rbw = {
-            enable = true;
-            settings = {
-              email = "admin@company.com";
-              base_url = "https://vault.company.com";  # Self-hosted Bitwarden
-              lock_timeout = 3600;
-              pinentry = pkgs.pinentry-gtk2;
-            };
-          };
+          # Note: Configure rbw using Home Manager or manually:
+          # programs.rbw = { enable = true; settings = { email = "..."; }; };
 
           # Advanced sopswarden configuration
           services.sopswarden = {
@@ -130,14 +122,28 @@
             };
           };
 
+          # Minimal system configuration
+          system.stateVersion = "24.11";
+          boot.loader.grub.device = "/dev/sda";
+          fileSystems."/" = { device = "/dev/sda1"; fsType = "ext4"; };
+          users.users.myuser = { isNormalUser = true; };
+
           # Home manager integration
           home-manager.users.myuser = {
-            programs.sopswarden = {
+            home.stateVersion = "24.11";
+            # Configure rbw for the user
+            programs.rbw = {
               enable = true;
-              secretsFile = ./config/user-secrets.nix;
-              sopsFile = ./config/user-secrets.yaml;
-              ageKeyFile = "/home/myuser/.config/sops/age/keys.txt";
+              settings = {
+                email = "admin@company.com";
+                base_url = "https://vault.company.com";  # Self-hosted Bitwarden
+                lock_timeout = 3600;
+                pinentry = pkgs.pinentry-gtk2;
+              };
             };
+            
+            # Note: programs.sopswarden would be available if homeManagerModules were imported
+            # For now, sopswarden is configured at system level
           };
 
           # Custom deployment script that auto-syncs

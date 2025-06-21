@@ -55,7 +55,7 @@ check_dependency() {
     fi
 }
 
-check_dependency "$(basename "$RBW_COMMAND")"
+check_dependency "${builtins.baseNameOf rbwCommand}"
 check_dependency "sops"
 check_dependency "age"
 check_dependency "jq"
