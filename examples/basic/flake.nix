@@ -11,7 +11,7 @@
       system = "x86_64-linux";
       modules = [
         sopswarden.nixosModules.default
-        {
+        ({ pkgs, secrets, ... }: {
           # Configure rbw for Bitwarden access
           programs.rbw = {
             enable = true;
@@ -59,7 +59,7 @@
               host myapp myuser 0.0.0.0/0 md5
             '';
           };
-        }
+        })
       ];
     };
   };

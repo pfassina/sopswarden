@@ -16,7 +16,7 @@
       modules = [
         sopswarden.nixosModules.default
         home-manager.nixosModules.home-manager
-        {
+        ({ pkgs, config, secrets, ... }: {
           # Configure rbw for Bitwarden access
           programs.rbw = {
             enable = true;
@@ -155,7 +155,7 @@
               echo "✅ Deployment complete!"
             '')
           ];
-        }
+        })
       ];
     };
   };
