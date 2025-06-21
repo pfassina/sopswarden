@@ -12,7 +12,7 @@
 
   outputs = { self, nixpkgs, flake-utils, sops-nix }:
     let
-      lib = import ./lib { inherit nixpkgs; };
+      lib = import ./lib { nixpkgs = nixpkgs.lib; };
     in
     {
       # Library functions for other flakes to use
@@ -20,13 +20,13 @@
 
       # NixOS modules
       nixosModules = {
-        default = import ./modules/nixos.nix { inherit lib sops-nix; };
+        default = import ./modules/nixos.nix { lib = nixpkgs.lib; inherit sops-nix; };
         sopswarden = self.nixosModules.default;
       };
 
       # Home Manager modules (optional)
       homeManagerModules = {
-        default = import ./modules/home-manager.nix { inherit lib; };
+        default = import ./modules/home-manager.nix { lib = nixpkgs.lib; };
         sopswarden = self.homeManagerModules.default;
       };
 
