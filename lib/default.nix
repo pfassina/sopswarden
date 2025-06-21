@@ -1,7 +1,8 @@
 { nixpkgs }:
 
 let
-  inherit (nixpkgs.lib) types mkOption;
+  inherit (nixpkgs) types mkOption;
+  lib = nixpkgs;
 in
 rec {
   # Core function to create a parameterized sync script
@@ -88,15 +89,7 @@ rec {
   # Function to create secret accessor functions
   mkSecretAccessors = { config, secrets }:
     builtins.mapAttrs (name: _:
-      let
-        secretPath = config.sops.secrets.${name}.path;
-        # Try to read the secret file if it exists (during rebuild on running system)
-        # Fall back to file path if not available (during initial build)
-        tryReadSecret = builtins.tryEval (nixpkgs.lib.removeSuffix "\n" (builtins.readFile secretPath));
-      in
-      if tryReadSecret.success
-      then tryReadSecret.value
-      else secretPath
+      config.sops.secrets.${name}.path
     ) secrets;
 
   # Hash-based change detection
@@ -104,7 +97,7 @@ rec {
     let
       secretsHash = builtins.hashFile "sha256" secretsFile;
       lastSyncHash = if builtins.pathExists hashFile
-        then nixpkgs.lib.removeSuffix "\n" (builtins.readFile hashFile)
+        then lib.removeSuffix "\n" (builtins.readFile hashFile)
         else "";
     in
     {
