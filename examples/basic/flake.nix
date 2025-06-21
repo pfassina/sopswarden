@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    sopswarden.url = "github:yourusername/sopswarden";
+    sopswarden.url = "github:pfassina/sopswarden";
   };
 
   outputs = { self, nixpkgs, sopswarden, ... }: {

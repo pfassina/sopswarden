@@ -20,7 +20,7 @@ Sopswarden eliminates the pain of manual secret management in NixOS by automatic
 
 ```nix
 {
-  inputs.sopswarden.url = "github:yourusername/sopswarden";
+  inputs.sopswarden.url = "github:pfassina/sopswarden";
   
   outputs = { nixpkgs, sopswarden, ... }: {
     nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
