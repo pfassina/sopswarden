@@ -57,10 +57,10 @@ let
     }
   '';
 
-  # Test SOPS configuration with valid age key
+  # Test SOPS configuration - public key will be generated dynamically
   testSopsYaml = pkgs.writeText ".sops.yaml" ''
     keys:
-      - &test_key age1a9agvy6fpgk59evrftrpp2679h7cuf27c5h9e5kfjczhuyrsgyhs5e4h72
+      - &test_key TEST_AGE_PUBLIC_KEY_PLACEHOLDER
     creation_rules:
       - path_regex: .*\.ya?ml$
         key_groups:
@@ -107,10 +107,16 @@ in pkgs.stdenv.mkDerivation {
     cp ${testSecretsNix} secrets.nix
     cp ${testSopsYaml} .sops.yaml
     
-    # Generate test age key (matching the public key in .sops.yaml)
+    # Generate test age key dynamically (no hardcoded secrets!)
     export HOME=/tmp/test-home
     mkdir -p $HOME/.config/sops/age
-    echo "AGE-SECRET-KEY-1FJL7US6NUUJAAV73AMFLXX2P7GUTS0HQUN8A36WXTULJKPWCW7ZS7SGK0G" > $HOME/.config/sops/age/keys.txt
+    
+    # Generate fresh age key for testing
+    age-keygen > $HOME/.config/sops/age/keys.txt
+    
+    # Extract the public key and update .sops.yaml
+    public_key=$(age-keygen -y $HOME/.config/sops/age/keys.txt)
+    sed -i "s/TEST_AGE_PUBLIC_KEY_PLACEHOLDER/$public_key/" .sops.yaml
     
     # Enable nix experimental features
     export NIX_CONFIG="experimental-features = nix-command flakes"
