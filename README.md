@@ -1,4 +1,4 @@
-# Sopswarden
+# sopsWarden
 
 > **SOPS secrets management integrated with Bitwarden for NixOS**
 
