@@ -123,6 +123,23 @@ in
       description = "Whether to make sopswarden-sync command available system-wide";
     };
 
+    # Bootstrap configuration
+    bootstrapMode = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Enable bootstrap mode to allow system builds when adding new secrets.
+        
+        When enabled, SOPS secret validation is bypassed, allowing you to:
+        1. Add new secrets to your configuration
+        2. Build the system successfully
+        3. Run sopswarden-sync to fetch the new secrets
+        4. Disable bootstrap mode and rebuild normally
+        
+        ⚠️  In bootstrap mode, secret accessors will return file paths instead of content.
+      '';
+    };
+
   };
 
   config = mkIf cfg.enable (mkMerge [
@@ -144,9 +161,8 @@ in
       };
     }
 
-    # SOPS secrets configuration - conditionally set based on file existence
-    # Use try-catch pattern since pathExists may not work reliably with flake paths
-    (mkIf (cfg.secrets != {}) (
+    # SOPS secrets configuration - conditional to prevent bootstrap failures
+    (mkIf (cfg.secrets != {} && !cfg.bootstrapMode) (
       let
         fileExists = builtins.pathExists cfg.sopsFile;
       in mkIf fileExists {
@@ -166,10 +182,13 @@ in
     })
 
 
-    # Warnings for missing secrets file
+    # Warnings for missing secrets file and bootstrap guidance
     {
-      warnings = optional (!(builtins.pathExists cfg.sopsFile) && cfg.secrets != {})
-        "⚠️  sopswarden: secrets.yaml not found at ${toString cfg.sopsFile}. Run 'sopswarden-sync' to create it.";
+      warnings = 
+        optional (!(builtins.pathExists cfg.sopsFile) && cfg.secrets != {} && !cfg.bootstrapMode)
+          "⚠️  sopswarden: secrets.yaml not found at ${toString cfg.sopsFile}. Run 'sopswarden-sync' to create it." ++
+        optional (cfg.bootstrapMode)
+          "🔄 sopswarden: Bootstrap mode enabled. Run 'sopswarden-sync' then disable bootstrap mode and rebuild.";
 
       # Note: Disabled assertion for now due to pathExists issues in flake context
       # TODO: Re-enable with better file existence detection
