@@ -1,5 +1,5 @@
 # NixOS module test configuration
-{ pkgs, lib, ... }:
+{ config, pkgs, lib, ... }:
 
 let
   # Import sopswarden module

@@ -89,7 +89,16 @@ rec {
   # Function to create secret accessor functions
   mkSecretAccessors = { config, secrets }:
     builtins.mapAttrs (name: _:
-      config.sops.secrets.${name}.path
+      let
+        secretPath = config.sops.secrets.${name}.path;
+        # Read content when possible (requires --impure)
+        tryReadSecret = builtins.tryEval (
+          lib.removeSuffix "\n" (builtins.readFile secretPath)
+        );
+      in
+      if tryReadSecret.success
+      then tryReadSecret.value  # Return actual content
+      else secretPath           # Fallback to path if reading fails
     ) secrets;
 
   # Hash-based change detection
