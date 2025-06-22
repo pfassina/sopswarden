@@ -46,10 +46,16 @@ deadnix .                                     # Dead code detection
 - `modules/home-manager.nix` - Home Manager module for user-level usage
 
 **Key Functions:**
-- `mkSyncScript` - Generates parameterized sopswarden-sync bash script with embedded secrets
+- `mkSyncScript` - Generates parameterized sopswarden-sync bash script with embedded secrets and path resolution
 - `mkSopsSecrets` - Creates SOPS secret configuration from user definitions
 - `mkSecretAccessors` - **CRITICAL**: Provides runtime access to decrypted secrets via `secrets.secret-name` syntax
 - `normalizeSecretDef` - Normalizes secret definitions to standard format
+
+**Critical Architecture Changes (2025-06-22):**
+- **String Paths**: `sopsFile` and `sopsConfigFile` are now `types.str` instead of `types.path` to avoid Nix store caching issues
+- **Bootstrap Mode**: New `bootstrapMode` option to bypass SOPS validation when adding new secrets
+- **Path Resolution**: Sync script handles relative paths by resolving them from working directory
+- **External File Management**: SOPS validation disabled (`sops.validateSopsFiles = false`) to allow sopswarden-sync to manage files
 
 ### Secret Access Pattern (Core Feature)
 
@@ -106,6 +112,96 @@ The script includes comprehensive compatibility for Nix flake environments where
 - Proper cleanup with `trap` for temporary files
 
 This ensures the script works seamlessly in both traditional filesystem and Nix store environments without requiring user configuration changes.
+
+### String Paths Architecture (Critical)
+
+**Problem Solved**: External file modifications (by sopswarden-sync) weren't detected due to Nix store caching.
+
+**Root Cause**: Nix path values (e.g., `./secrets.yaml`) get copied to the store at evaluation time, creating immutable snapshots. When sopswarden-sync updates the local file, Nix continues referencing the old cached store path.
+
+**Solution**: String paths (`"./secrets.yaml"`) are resolved fresh on each evaluation, so external modifications are detected.
+
+**Implementation Details:**
+```nix
+# Old (problematic):
+sopsFile = mkOption { type = types.path; default = ./secrets.yaml; };
+
+# New (working):
+sopsFile = mkOption { type = types.str; default = "./secrets.yaml"; };
+
+# Path resolution in NixOS module:
+absoluteSopsFile = 
+  if lib.hasPrefix "/" cfg.sopsFile 
+  then cfg.sopsFile  # Already absolute string
+  else 
+    # Convert relative to absolute for SOPS-nix compatibility
+    let
+      currentDir = builtins.getEnv "PWD";
+      resolvedPath = if currentDir != "" then "${currentDir}/${cfg.sopsFile}" else cfg.sopsFile;
+    in builtins.unsafeDiscardStringContext resolvedPath;
+```
+
+**Path Resolution in Sync Script:**
+```bash
+# Handle all path types in sopswarden-sync:
+if [[ "$SOPS_FILE" == /nix/store/* ]]; then
+    # Nix store path: extract filename and write to working directory
+elif [[ "$SOPS_FILE" == ./* ]]; then
+    # Relative path: resolve to absolute path from working directory
+    SOPS_FILE="$WORK_DIR/$SOPS_FILE"
+elif [[ "$SOPS_FILE" != /* ]]; then
+    # Not absolute: treat as relative to working directory
+    SOPS_FILE="$WORK_DIR/$SOPS_FILE"
+fi
+```
+
+**Working Directory Requirement**: Users must run sopswarden-sync from the flake root directory where flake.nix is located.
+
+### Bootstrap Mode Architecture
+
+**Problem Solved**: Chicken-and-egg issue when adding new secrets - build fails because secrets don't exist in secrets.yaml yet, but can't run sopswarden-sync because system won't build.
+
+**Implementation:**
+```nix
+# Bootstrap mode option
+bootstrapMode = mkOption {
+  type = types.bool;
+  default = false;
+  description = "Enable to bypass SOPS validation when adding new secrets";
+};
+
+# Conditional SOPS configuration
+(mkIf (cfg.secrets != {} && !cfg.bootstrapMode) {
+  sops.defaultSopsFile = absoluteSopsFile;
+  sops.secrets = sopsSecrets;
+  sops.validateSopsFiles = false;  # Allow external file management
+})
+
+# Bootstrap-aware secret accessors
+secretAccessors = 
+  if cfg.bootstrapMode
+  then 
+    # Use placeholder paths - avoids evaluation failures
+    sopswardenLib.mkSecretAccessors {
+      inherit config;
+      secrets = cfg.secrets;
+      bootstrapMode = true;
+    }
+  else 
+    # Normal SOPS integration
+    sopswardenLib.mkSecretAccessors {
+      inherit config;
+      secrets = cfg.secrets;
+      bootstrapMode = false;
+    };
+```
+
+**Bootstrap Workflow:**
+1. Enable `bootstrapMode = true`
+2. Add new secrets to configuration
+3. Build succeeds (SOPS validation bypassed)
+4. Run `sopswarden-sync` (generates script with new secrets)
+5. Disable bootstrap mode and rebuild normally
 
 ### Module Integration
 
@@ -180,6 +276,47 @@ environment.variables.TEST = secrets.test-secret;  # This must work
 
 ### Testing Integration
 Integration tests require mock Bitwarden data. Use the test framework in `tests/integration/` that provides controlled test scenarios.
+
+### String Paths Requirements (CRITICAL)
+
+**Always use string paths for file references:**
+```nix
+# ✅ Correct - string paths
+sopsFile = "./secrets.yaml";
+sopsConfigFile = "./.sops.yaml";
+
+# ❌ Incorrect - Nix paths (causes caching issues)
+sopsFile = ./secrets.yaml;
+sopsConfigFile = ./.sops.yaml;
+```
+
+**Working Directory Dependency**: sopswarden-sync must be run from the flake root directory (where flake.nix is located) for relative path resolution to work correctly.
+
+**Path Resolution Testing**: When making changes to path handling, test with:
+```bash
+# Test relative path resolution
+cd /tmp/test-flake
+mkdir -p secrets
+echo 'test: "value"' > .sops.yaml
+nix build /path/to/sopswarden#sopswarden-sync
+./result/bin/sopswarden-sync  # Should resolve paths correctly
+```
+
+### Bootstrap Mode Testing
+
+When making changes that could affect bootstrap mode:
+```nix
+# Test configuration that should work in bootstrap mode
+services.sopswarden = {
+  enable = true;
+  bootstrapMode = true;
+  secrets = {
+    existing-secret = "Existing Item";
+    missing-secret = "Missing Item";  # Not in secrets.yaml yet
+  };
+};
+# Build should succeed without errors
+```
 
 ## Critical Implementation Details
 

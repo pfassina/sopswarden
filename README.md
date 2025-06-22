@@ -104,6 +104,8 @@ rbw unlock
 ### 4. Sync and deploy
 
 ```bash
+# Run from your flake root directory (where flake.nix is located)
+cd ~/your-flake-directory
 sopswarden-sync    # Fetch secrets from Bitwarden and encrypt
 nixos-rebuild switch --flake .#myhost --impure
 ```
@@ -142,7 +144,8 @@ services.sopswarden = {
 # 2. Build system successfully  
 nixos-rebuild switch --flake .#hostname --impure
 
-# 3. Sync new secrets from Bitwarden
+# 3. Sync new secrets from Bitwarden (run from flake root directory)
+cd ~/your-flake-directory  # Where flake.nix is located
 sopswarden-sync
 
 # 4. Disable bootstrap mode
@@ -402,6 +405,123 @@ services.sopswarden.secrets = {
 - ✅ **Simplified architecture** - No complex path resolution or file detection
 - ✅ **Better error handling** - Clear warnings instead of cryptic failures
 - ✅ **Flake compatible** - Works seamlessly in any Nix environment
+
+## 🔧 Troubleshooting
+
+### Working Directory Issues
+
+**Problem**: `sopswarden-sync` fails with path errors like:
+```
+cp: cannot stat '/current/dir/./.sops.yaml': No such file or directory
+```
+
+**Solution**: Run `sopswarden-sync` from your **flake root directory** (where `flake.nix` is located):
+
+```bash
+# ❌ Wrong - running from subdirectory
+cd ~/nix/secrets
+sopswarden-sync  # Fails with path errors
+
+# ✅ Correct - running from flake root  
+cd ~/nix
+sopswarden-sync  # Works correctly
+```
+
+**Why**: Relative paths like `./secrets.yaml` are resolved from your current working directory.
+
+### Path Configuration
+
+**Use string paths, not Nix paths:**
+
+```nix
+# ✅ Correct - string paths
+services.sopswarden = {
+  sopsFile = "./secrets.yaml";        # String
+  sopsConfigFile = "./.sops.yaml";    # String
+};
+
+# ❌ Incorrect - Nix paths (causes caching issues)  
+services.sopswarden = {
+  sopsFile = ./secrets.yaml;          # Nix path - gets cached in store
+  sopsConfigFile = ./.sops.yaml;      # Nix path - gets cached in store
+};
+```
+
+### Bootstrap Mode
+
+**When to use**: Adding new secrets to existing systems.
+
+**Problem**: Build fails when adding new secrets:
+```
+sops-install-secrets: secret new-secret in secrets.yaml is not valid: the key 'new-secret' cannot be found
+```
+
+**Solution**: Use bootstrap mode:
+```nix
+services.sopswarden = {
+  bootstrapMode = true;  # Enable temporarily
+  secrets = {
+    # ... existing secrets ...
+    new-secret = "New Item";  # Add new secrets
+  };
+};
+```
+
+**Workflow**:
+1. Enable `bootstrapMode = true`
+2. Add new secrets to configuration  
+3. Rebuild system
+4. Run `sopswarden-sync`
+5. Disable bootstrap mode and rebuild
+
+### Common Errors
+
+**Error**: `rbw unlock` required
+```bash
+rbw unlock  # Enter your Bitwarden master password
+sopswarden-sync
+```
+
+**Error**: `sops` command not found
+```bash
+nix-shell -p sops age  # Temporary install
+# Or ensure sops is in your system packages
+```
+
+**Error**: Permission denied writing to secrets file
+```bash
+# Check file permissions and ownership
+ls -la secrets.yaml
+chmod 644 secrets.yaml  # If needed
+```
+
+### File Layout
+
+**Recommended structure:**
+```
+~/nix/                    # Flake root directory
+├── flake.nix
+├── .sops.yaml           # SOPS configuration
+├── secrets.yaml         # Encrypted secrets (safe to commit)
+└── configuration.nix    # Your NixOS config
+```
+
+**Run sopswarden-sync from:** `~/nix/` (flake root)
+
+### Git Integration
+
+**The encrypted `secrets.yaml` is safe to commit:**
+```bash
+git add secrets.yaml     # Encrypted file - safe to share
+git add .sops.yaml       # SOPS config - safe to share  
+git commit -m "Add encrypted secrets"
+```
+
+**Private keys should NOT be committed:**
+```bash
+echo "*.txt" >> .gitignore  # Age private keys
+echo ".env" >> .gitignore   # Environment files
+```
 
 ## 🤝 Contributing
 
