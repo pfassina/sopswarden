@@ -46,11 +46,10 @@ deadnix .                                     # Dead code detection
 - `modules/home-manager.nix` - Home Manager module for user-level usage
 
 **Key Functions:**
-- `mkSyncScript` - Generates parameterized sopswarden-sync bash script
+- `mkSyncScript` - Generates parameterized sopswarden-sync bash script with embedded secrets
 - `mkSopsSecrets` - Creates SOPS secret configuration from user definitions
 - `mkSecretAccessors` - **CRITICAL**: Provides runtime access to decrypted secrets via `secrets.secret-name` syntax
-- `mkSecretsJson` - **NEW**: Generates JSON configuration from Nix secrets (bootstrap fix)
-- `mkHashTracker` - Implements change detection for secrets.nix
+- `normalizeSecretDef` - Normalizes secret definitions to standard format
 
 ### Secret Access Pattern (Core Feature)
 
@@ -79,12 +78,12 @@ This is implemented by `mkSecretAccessors` in `lib/default.nix:90-102`, which:
 
 The sync script is generated at build time using Nix string interpolation in `lib/sync-script.nix`. The script:
 
-1. **Configuration Setup** - Resolves file paths and working directory
-2. **JSON Configuration Reading** - Reads secret definitions from auto-generated `secrets.json` (eliminating bootstrap chicken-and-egg problem)
-3. **Change Detection** - Uses SHA256 hashing on `secrets.nix` to skip unnecessary syncs
-4. **Bitwarden Access** - Fetches secrets using rbw CLI with proper error handling
+1. **Configuration Setup** - Sets up paths and working directory
+2. **Embedded Secret Processing** - Secret definitions embedded directly in generated script (eliminates bootstrap issues)
+3. **Bitwarden Access** - Fetches secrets using rbw CLI with graceful error handling
+4. **Graceful Degradation** - Missing secrets produce warnings, not failures
 5. **SOPS Encryption** - Creates temporary YAML file and encrypts with age keys
-6. **File Management** - Handles both Nix store and runtime file locations
+6. **Success Reporting** - Reports successful/failed secret counts
 
 ### Nix Store Compatibility
 
@@ -112,11 +111,11 @@ This ensures the script works seamlessly in both traditional filesystem and Nix 
 
 **NixOS Module (`modules/nixos.nix`):**
 - Imports sops-nix module
+- Accepts secret definitions directly via `services.sopswarden.secrets` option
 - Configures SOPS with user secrets
-- **Exports secret accessors to other modules via `_module.args.secrets`** (lines 169-172)
-- **NEW**: Auto-generates `secrets.json` from Nix configuration (bootstrap fix)
-- **NEW**: Creates runtime JSON file via activation script for sync command
-- Provides change detection warnings
+- **Exports secret accessors to other modules via `_module.args.secrets`**
+- Generates sync script with embedded secret definitions (eliminates bootstrap issues)
+- Provides warnings for missing secrets file
 - Installs packages and sync command system-wide
 
 **Home Manager Module (`modules/home-manager.nix`):**
@@ -126,9 +125,17 @@ This ensures the script works seamlessly in both traditional filesystem and Nix 
 
 ### Secret Definition System
 
-Users define secrets in two formats:
+Users define secrets directly in NixOS configuration in two formats:
 - **Simple:** `secretName = "Bitwarden Item Name"`
 - **Complex:** `secretName = { name = "Item"; user = "email"; type = "note"; field = "custom"; }`
+
+Example:
+```nix
+services.sopswarden.secrets = {
+  wifi-password = "Home WiFi";  # Simple
+  api-key = { name = "API"; user = "admin"; };  # Complex
+};
+```
 
 The `normalizeSecretDef` function converts simple definitions to the complex format internally.
 
@@ -144,7 +151,6 @@ The `normalizeSecretDef` function converts simple definitions to the complex for
 - `rbw` - Bitwarden CLI client
 - `sops` - Secret encryption/decryption
 - `age` - Encryption backend
-- `jq` - JSON processing in sync script
 
 **Development Dependencies:**
 - `nixpkgs-fmt` - Nix code formatting

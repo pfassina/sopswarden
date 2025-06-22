@@ -7,22 +7,14 @@ let
   cfg = config.services.sopswarden;
   sopswardenLib = import ../lib { nixpkgs = lib; };
 
-  # Generate JSON configuration from Nix secrets
-  secretsJsonFile = pkgs.writeTextFile {
-    name = "secrets.json";
-    text = builtins.toJSON {
-      secrets = builtins.mapAttrs (name: def: sopswardenLib.normalizeSecretDef def) cfg.secrets;
-    };
-  };
-
-  # Create the sync script with user configuration
+  # Create the sync script with direct secrets configuration
   syncScript = sopswardenLib.mkSyncScript {
-    inherit (cfg) rbwCommand secretsFile sopsFile ageKeyFile sopsConfigFile workingDirectory;
-    secretsJsonFile = "${secretsJsonFile}";
+    inherit (cfg) rbwCommand sopsFile ageKeyFile sopsConfigFile;
+    secrets = cfg.secrets;
     inherit pkgs;
   };
 
-  # Create SOPS secrets configuration from user secrets
+  # Create SOPS secrets configuration from direct secrets
   sopsSecrets = sopswardenLib.mkSopsSecrets {
     secrets = cfg.secrets;
     sopsFile = cfg.sopsFile;
@@ -40,12 +32,6 @@ let
       secrets = cfg.secrets;
     }
     else builtins.mapAttrs (name: _: "/run/secrets/${name}") cfg.secrets;
-
-  # Hash tracking for change detection
-  hashTracker = sopswardenLib.mkHashTracker {
-    secretsFile = cfg.secretsFile;
-    hashFile = cfg.hashFile;
-  };
 
 in
 {
@@ -73,13 +59,7 @@ in
       };
     };
 
-    # File paths
-    secretsFile = mkOption {
-      type = types.path;
-      default = ./secrets.nix;
-      description = "Path to the secrets.nix file containing secret definitions";
-    };
-
+    # SOPS configuration
     sopsFile = mkOption {
       type = types.path;
       default = ./secrets.yaml;
@@ -96,18 +76,6 @@ in
       type = types.path;
       default = ./.sops.yaml;
       description = "Path to the .sops.yaml configuration file";
-    };
-
-    hashFile = mkOption {
-      type = types.str;
-      default = builtins.dirOf (toString cfg.secretsFile) + "/.last-sync-hash";
-      description = "Path to store the last sync hash for change detection";
-    };
-
-    workingDirectory = mkOption {
-      type = types.nullOr types.str;
-      default = null;
-      description = "Working directory for sync operations. If null, uses directory containing secretsFile";
     };
 
     # rbw configuration
@@ -146,7 +114,7 @@ in
     installPackages = mkOption {
       type = types.bool;
       default = true;
-      description = "Whether to install sopswarden dependencies (rbw, sops, age, jq) system-wide";
+      description = "Whether to install sopswarden dependencies (rbw, sops, age) system-wide";
     };
 
     installSyncCommand = mkOption {
@@ -155,12 +123,6 @@ in
       description = "Whether to make sopswarden-sync command available system-wide";
     };
 
-    # Change detection and warnings
-    enableChangeDetection = mkOption {
-      type = types.bool;
-      default = true;
-      description = "Enable warnings when secrets.nix changes since last sync";
-    };
   };
 
   config = mkIf cfg.enable (mkMerge [
@@ -203,38 +165,11 @@ in
       environment.systemPackages = [ syncScript ];
     })
 
-    # Generate runtime secrets.json file for sync script
-    (mkIf (cfg.secrets != {}) {
-      system.activationScripts.sopswarden-json = {
-        text = ''
-          # Create runtime secrets.json in the directory containing secrets.nix
-          SECRETS_DIR="$(dirname "${toString cfg.secretsFile}")"
-          if [ -w "$SECRETS_DIR" ]; then
-            echo "🔧 Generating secrets.json for sopswarden-sync..."
-            cat > "$SECRETS_DIR/secrets.json" << 'EOF'
-          ${builtins.toJSON {
-            secrets = builtins.mapAttrs (name: def: sopswardenLib.normalizeSecretDef def) cfg.secrets;
-          }}
-          EOF
-          else
-            echo "🔧 Secrets directory not writable, sync script will use Nix store JSON"
-          fi
-        '';
-        deps = [];
-      };
-    })
 
-    # Warnings and assertions for missing secrets file and change detection
+    # Warnings for missing secrets file
     {
-      warnings = lib.concatLists [
-        # Warning when secrets file doesn't exist
-        (optional (!(builtins.pathExists cfg.sopsFile) && cfg.secrets != {})
-          "⚠️  sopswarden: secrets.yaml not found at ${toString cfg.sopsFile}. Run 'sopswarden-sync' to create it.")
-        
-        # Warning when secrets.nix has changed (only if change detection enabled)
-        (optional (cfg.enableChangeDetection && hashTracker.hasChanged)
-          "⚠️  sopswarden: secrets.nix has changed since last sync. Run 'sopswarden-sync' to update encrypted secrets.")
-      ];
+      warnings = optional (!(builtins.pathExists cfg.sopsFile) && cfg.secrets != {})
+        "⚠️  sopswarden: secrets.yaml not found at ${toString cfg.sopsFile}. Run 'sopswarden-sync' to create it.";
 
       # Note: Disabled assertion for now due to pathExists issues in flake context
       # TODO: Re-enable with better file existence detection

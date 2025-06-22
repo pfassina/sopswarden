@@ -5,21 +5,35 @@ let
   lib = nixpkgs;
 in
 rec {
+  # Helper function to normalize secret definitions
+  normalizeSecretDef = secretDef:
+    if builtins.isString secretDef then {
+      name = secretDef;
+      user = null;
+      type = "login";
+      field = "password";
+    } else
+      secretDef // {
+        type = secretDef.type or "login";
+        field = secretDef.field or "password";
+        user = secretDef.user or null;
+      };
+
   # Core function to create a parameterized sync script
   mkSyncScript = {
     pkgs,
-    secretsFile ? "./secrets.nix",
-    secretsJsonFile ? "./secrets.json",
+    secrets ? {},
     sopsFile ? "./secrets.yaml", 
     ageKeyFile ? "~/.config/sops/age/keys.txt",
     sopsConfigFile ? "./.sops.yaml",
     rbwPackage ? pkgs.rbw,
     rbwCommand ? "${rbwPackage}/bin/rbw",
-    forceSync ? false,
-    workingDirectory ? null
+    forceSync ? false
   }:
     pkgs.writeShellScriptBin "sopswarden-sync" (import ./sync-script.nix {
-      inherit secretsFile secretsJsonFile sopsFile ageKeyFile sopsConfigFile rbwCommand forceSync workingDirectory;
+      inherit secrets sopsFile ageKeyFile sopsConfigFile rbwCommand forceSync;
+      inherit normalizeSecretDef;
+      inherit lib;
     });
 
   # Default packages needed for sopswarden
@@ -27,7 +41,6 @@ rec {
     rbw    # Bitwarden CLI - core functionality
     sops   # Secret encryption 
     age    # Encryption backend
-    jq     # JSON parsing
   ];
 
   # Secret definition types for validation
@@ -57,20 +70,6 @@ rec {
       };
     };
   };
-
-  # Helper function to normalize secret definitions
-  normalizeSecretDef = secretDef:
-    if builtins.isString secretDef then {
-      name = secretDef;
-      user = null;
-      type = "login";
-      field = "password";
-    } else
-      secretDef // {
-        type = secretDef.type or "login";
-        field = secretDef.field or "password";
-        user = secretDef.user or null;
-      };
 
   # Function to create SOPS secrets configuration
   mkSopsSecrets = { secrets, sopsFile ? ./secrets.yaml, defaultOwner ? "root", defaultGroup ? "root", defaultMode ? "0400" }:
@@ -102,30 +101,4 @@ rec {
       else secretPath           # Fallback to path if reading fails
     ) secrets;
 
-  # Function to generate JSON configuration from Nix secrets
-  mkSecretsJson = { pkgs, secrets, outputPath ? "./secrets.json" }:
-    let
-      # Normalize all secret definitions to the complex format
-      normalizedSecrets = builtins.mapAttrs (name: def: normalizeSecretDef def) secrets;
-      # Convert to JSON
-      jsonContent = builtins.toJSON { secrets = normalizedSecrets; };
-    in
-    pkgs.writeTextFile {
-      name = "secrets.json";
-      destination = "/secrets.json";
-      text = jsonContent;
-    };
-
-  # Hash-based change detection
-  mkHashTracker = { secretsFile, hashFile }:
-    let
-      secretsHash = builtins.hashFile "sha256" secretsFile;
-      lastSyncHash = if builtins.pathExists hashFile
-        then lib.removeSuffix "\n" (builtins.readFile hashFile)
-        else "";
-    in
-    {
-      inherit secretsHash lastSyncHash;
-      hasChanged = secretsHash != lastSyncHash;
-    };
 }

@@ -2,15 +2,31 @@
 
 > **SOPS secrets management integrated with Bitwarden for NixOS**
 
+## ⚠️ **Beta Software Warning**
+
+**sopsWarden is currently in beta and under active development.** The configuration format and API may change between versions.
+
+**Before using sopsWarden:**
+- 📋 **Backup your existing configurations** - especially `.sops.yaml` and any encrypted files
+- 🧪 **Test thoroughly in non-production environments** first  
+- 🔄 **Pin to specific flake commits** to avoid unexpected changes
+- 📖 **Check the changelog** before updating versions
+- 💾 **Keep manual backups** of critical secrets during transition
+
+**Production users:** Consider waiting for v1.0 release unless you're prepared to handle breaking changes.
+
+---
+
 sopsWarden eliminates the pain of manual secret management in NixOS by automatically syncing secrets from your Bitwarden vault to encrypted SOPS files. No more editing encrypted YAML files by hand!
 
 ## ✨ Features
 
 - 🔐 **Bitwarden Integration** - Use your existing Bitwarden vault as the source of truth
-- 🤖 **Automatic Syncing** - Smart change detection with hash-based tracking
+- 🎯 **In-Configuration Secrets** - Define secrets directly in your NixOS configuration
 - 🛡️ **SOPS Encryption** - Secrets encrypted at rest using age keys
+- 🚀 **Zero Bootstrap Issues** - Add new secrets without circular dependency problems
+- 🔄 **Graceful Degradation** - Missing secrets produce warnings, not build failures
 - 🎯 **Type-Safe Access** - Secrets available as `secrets.secret-name` in NixOS configs
-- 🔄 **Graceful Error Handling** - Never blocks deployment if Bitwarden is locked
 - 🏠 **Home Manager Support** - Works with both NixOS and Home Manager
 - ⚡ **Zero Manual Encryption** - Never touch encrypted files directly
 
@@ -30,9 +46,13 @@ sopsWarden eliminates the pain of manual secret management in NixOS by automatic
           services.sopswarden = {
             enable = true;
             secrets = {
-              wifi-password = "Home WiFi";  # Simple: uses password field
-              api-key = { name = "My Service"; user = "admin@example.com"; };  # Complex: specific user
-              ssl-cert = { name = "Certificates"; type = "note"; field = "ssl_cert"; };  # Note field
+              # Simple secrets - just specify the Bitwarden item name
+              wifi-password = "Home WiFi";
+              database-url = "Production Database";
+              
+              # Complex secrets - specify user, type, or field
+              api-key = { name = "My Service"; user = "admin@example.com"; };
+              ssl-cert = { name = "Certificates"; type = "note"; field = "ssl_cert"; };
             };
           };
         }
@@ -201,9 +221,9 @@ services.sopswarden = {
 
 ## 🔄 Workflow
 
-### First-Time Setup (Bootstrap)
+### First-Time Setup
 
-When adding secrets to a new NixOS system for the first time:
+Adding secrets to a new NixOS system is now straightforward:
 
 1. **Add secrets to your configuration:**
    ```nix
@@ -212,6 +232,7 @@ When adding secrets to a new NixOS system for the first time:
      secrets = {
        wifi-password = "Home WiFi";
        api-key = "My Service";
+       database-password = { name = "DB Server"; user = "admin"; };
      };
    };
    ```
@@ -221,23 +242,23 @@ When adding secrets to a new NixOS system for the first time:
    nixos-rebuild switch --flake .#host --impure
    ```
    
-   ✅ **New:** This will now succeed with helpful guidance instead of cryptic errors!
+   ✅ **Always succeeds** - no bootstrap issues!
    ```
    ⚠️  sopswarden: secrets.yaml not found. Run 'sopswarden-sync' to create it.
    ```
 
 3. **Sync secrets and rebuild:**
    ```bash
-   sopswarden-sync                              # Create encrypted secrets file
+   sopswarden-sync                              # Fetch and encrypt all secrets
    nixos-rebuild switch --flake .#host --impure  # Final rebuild with secrets
    ```
 
 ### Adding New Secrets
 
-✅ **Fixed:** No more chicken-and-egg bootstrap problems!
+✅ **Zero bootstrap issues** - adding secrets is seamless!
 
 1. **Add to Bitwarden** (web interface or `rbw`)
-2. **Update secrets.nix** with mapping:
+2. **Update your configuration:**
    ```nix
    services.sopswarden.secrets = {
      # existing secrets...
@@ -245,9 +266,9 @@ When adding secrets to a new NixOS system for the first time:
    };
    ```
 3. **Rebuild:** `nixos-rebuild switch --flake .#host --impure`
-   - ✅ Build succeeds and auto-generates fresh `secrets.json`
-   - ⚠️ Shows warning: "secrets.nix has changed since last sync"
-4. **Sync:** `sopswarden-sync` (now finds all secrets including new ones)
+   - ✅ **Always succeeds** - new secrets immediately available to sync script
+   - ⚠️ Shows helpful warning about missing secrets file
+4. **Sync:** `sopswarden-sync` ✅ **Finds all secrets including new ones**
 5. **Final rebuild:** `nixos-rebuild switch --flake .#host --impure`
 
 ### Updating Existing Secrets
@@ -263,13 +284,6 @@ sopsWarden automatically detects when `secrets.nix` changes:
 - ⚠️ **Show warnings** during build when sync needed
 - 🔄 **Auto-sync** with deployment tools
 
-### Bootstrap Problem Fixed
-
-**Previous Issue:** Adding new secrets created a chicken-and-egg problem where:
-- `nixos-rebuild` would fail because the new secret wasn't in `secrets.yaml`
-- `sopswarden-sync` would ignore the new secret because it read from the old Nix store
-
-**Solution:** sopswarden now auto-generates `secrets.json` at build time and prioritizes reading from the current working directory, eliminating bootstrap deadlocks while maintaining the familiar Nix workflow.
 
 ## 📚 Examples
 
@@ -285,64 +299,65 @@ sopsWarden automatically detects when `secrets.nix` changes:
 - ✅ **No secret exposure** - Hash-based change detection prevents unnecessary decryption
 - ✅ **Graceful failures** - Never blocks deployment if Bitwarden unavailable
 
-## 🚀 Improved User Experience
+## 🚀 User Experience
 
-### Bootstrap-Friendly Error Handling
+### Simplified Configuration
 
-sopsWarden now provides clear, actionable guidance instead of cryptic errors:
-
-**Before:**
-```
-error: opening file '/run/secrets.d/XX/secret-name': No such file or directory
-```
-
-**After:**
-```
-⚠️  sopswarden: secrets.yaml not found at /path/to/secrets.yaml. Run 'sopswarden-sync' to create it.
-⚠️  sopswarden: secrets.nix has changed since last sync. Run 'sopswarden-sync' to update encrypted secrets.
-```
-
-### Graceful Degradation
-
-- ✅ **No more bootstrap deadlocks** - System rebuilds succeed even without secrets file
-- ✅ **Clear guidance** - Exact steps to resolve issues
-- ✅ **Smart warnings** - Only shown when relevant
-- ✅ **Preserved API** - `secrets.secret-name` syntax always works
-
-## 🔧 Nix Store Compatibility
-
-sopsWarden is fully compatible with Nix flake-based configurations and automatically handles read-only Nix store environments:
-
-### Automatic Path Detection
-- **Detects Nix store paths** and redirects operations to writable locations
-- **Auto-discovers config directories** by searching for `flake.nix`, `configuration.nix`, or `secrets` directory
-- **Intelligent fallback** to common locations: `$HOME/nix`, `$HOME/.config/nixos`, `$HOME/nixos`
-
-### Smart File Handling
-- **Temporary files** use system temp directory instead of read-only Nix store
-- **Output files** written to runtime config directory with clean filenames
-- **SOPS configuration** explicitly specified to avoid config resolution issues
-
-### Zero Configuration Required
-The compatibility fixes are entirely internal - your existing configuration works without changes:
+Define secrets directly in your NixOS configuration - no separate files to manage:
 
 ```nix
-services.sopswarden = {
-  enable = true;
-  secrets = {
-    wifi-password = "Home WiFi";
-    api-key = { name = "My Service"; user = "admin@example.com"; };
-  };
+services.sopswarden.secrets = {
+  wifi-password = "Home WiFi";              # Simple secrets
+  api-key = { name = "API"; user = "admin"; };  # Complex secrets  
 };
 ```
 
-### Expected Output
-```bash
-🔧 Detected Nix store secrets file, using runtime directory: /home/user/nix
-🔧 Detected Nix store path, writing to: /home/user/nix/secrets.yaml
-🔄 Syncing secrets from Bitwarden...
-✅ Secrets synced successfully to /home/user/nix/secrets.yaml
+### Graceful Error Handling
+
+**Clear warnings instead of build failures:**
 ```
+⚠️  sopswarden: secrets.yaml not found. Run 'sopswarden-sync' to create it.
+⚠️  Warning: Failed to fetch 'Missing Item' - skipping
+📝 Successfully encrypted 5 secrets from Bitwarden
+```
+
+### Zero Bootstrap Issues
+
+- ✅ **No circular dependencies** - Secrets defined in configuration, not files
+- ✅ **Immediate availability** - New secrets ready to sync after rebuild
+- ✅ **Graceful degradation** - Missing secrets produce warnings, not failures
+- ✅ **Preserved API** - `secrets.secret-name` syntax always works
+
+## 🏗️ Architecture
+
+### In-Configuration Design
+
+sopsWarden uses a modern approach that eliminates file dependencies:
+
+- **Direct Configuration**: Secrets defined as NixOS options, not external files
+- **Build-Time Generation**: Sync script generated with embedded secret definitions  
+- **Zero File Dependencies**: No reading from `secrets.nix`, `secrets.json`, or config files
+- **Immediate Availability**: New secrets ready to sync the moment they're added
+
+### How It Works
+
+```nix
+# 1. User defines secrets in configuration
+services.sopswarden.secrets = {
+  wifi-password = "Home WiFi";
+};
+
+# 2. Build generates sync script with embedded secrets
+# 3. Script fetches directly from Bitwarden - no file reading needed
+# 4. Graceful degradation if secrets missing from vault
+```
+
+### Benefits
+
+- ✅ **No bootstrap problems** - Secrets available immediately after rebuild
+- ✅ **Simplified architecture** - No complex path resolution or file detection
+- ✅ **Better error handling** - Clear warnings instead of cryptic failures
+- ✅ **Flake compatible** - Works seamlessly in any Nix environment
 
 ## 🤝 Contributing
 
