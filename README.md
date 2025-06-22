@@ -120,6 +120,50 @@ Bitwarden Vault → sopswarden-sync → secrets.yaml (encrypted) → NixOS Build
 4. **Build** NixOS with `--impure` flag to read secrets
 5. **Use** secrets as `secrets.secret-name` in configurations
 
+## 🚀 Adding New Secrets (Bootstrap Mode)
+
+When adding new secrets to an existing system, use **bootstrap mode** to avoid circular dependency issues:
+
+### Quick Bootstrap Workflow
+
+```nix
+# 1. Enable bootstrap mode and add new secrets
+services.sopswarden = {
+  enable = true;
+  bootstrapMode = true;  # 🔧 Enable during bootstrap
+  secrets = {
+    # ... existing secrets ...
+    new-secret = "New Bitwarden Item";  # ✅ Add new secrets
+  };
+};
+```
+
+```bash
+# 2. Build system successfully  
+nixos-rebuild switch --flake .#hostname --impure
+
+# 3. Sync new secrets from Bitwarden
+sopswarden-sync
+
+# 4. Disable bootstrap mode
+# Remove `bootstrapMode = true;` from configuration
+
+# 5. Final rebuild
+nixos-rebuild switch --flake .#hostname --impure
+```
+
+### Why Bootstrap Mode?
+
+Without bootstrap mode, adding new secrets creates a chicken-and-egg problem:
+- ❌ Build fails because new secrets don't exist in secrets.yaml yet
+- ❌ Can't run sopswarden-sync because system won't build to generate updated sync script
+- ❌ Can't update sync script because build fails
+
+Bootstrap mode solves this by:
+- ✅ Bypassing SOPS validation for missing secrets during builds
+- ✅ Allowing sopswarden-sync to be generated with new secret definitions
+- ✅ Enabling the complete bootstrap workflow
+
 ## 🔧 Configuration
 
 ### Secret Types
@@ -179,10 +223,10 @@ programs.rbw = {
 services.sopswarden = {
   enable = true;
   
-  # File locations
-  secretsFile = ./config/secrets.nix;
-  sopsFile = ./config/secrets.yaml;
-  ageKeyFile = "/custom/path/keys.txt";
+  # File locations (use string paths to avoid caching issues)
+  sopsFile = "./config/secrets.yaml";      # Relative path
+  sopsConfigFile = "./config/.sops.yaml"; # SOPS configuration
+  ageKeyFile = "/custom/path/keys.txt";    # Absolute path for age keys
   
   # rbw configuration  
   rbwCommand = "${pkgs.rbw}/bin/rbw";  # Custom rbw command

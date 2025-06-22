@@ -24,10 +24,9 @@
           services.sopswarden = {
             enable = true;
             
-            # Custom file locations
-            secretsFile = ./config/secrets.nix;
-            sopsFile = ./config/secrets.yaml;
-            sopsConfigFile = ./config/.sops.yaml;
+            # Custom file locations (using string paths to avoid caching issues)
+            sopsFile = "./config/secrets.yaml";
+            sopsConfigFile = "./config/.sops.yaml";
             
             # Custom rbw configuration (e.g., for self-hosted Bitwarden)
             rbwCommand = "${pkgs.rbw}/bin/rbw";

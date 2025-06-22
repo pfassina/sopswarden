@@ -14,10 +14,23 @@ let
     inherit pkgs;
   };
 
+  # Convert to absolute path while avoiding store path context
+  # This satisfies SOPS-nix requirements without caching issues
+  absoluteSopsFile = 
+    if lib.hasPrefix "/" cfg.sopsFile 
+    then cfg.sopsFile  # Already absolute string
+    else 
+      # Convert relative path to absolute using current directory
+      # Use unsafeDiscardStringContext to avoid store path issues
+      let
+        currentDir = builtins.getEnv "PWD";
+        resolvedPath = if currentDir != "" then "${currentDir}/${cfg.sopsFile}" else cfg.sopsFile;
+      in builtins.unsafeDiscardStringContext resolvedPath;
+
   # Create SOPS secrets configuration from direct secrets
   sopsSecrets = sopswardenLib.mkSopsSecrets {
     secrets = cfg.secrets;
-    sopsFile = cfg.sopsFile;
+    sopsFile = absoluteSopsFile;
     defaultOwner = cfg.defaultOwner;
     defaultGroup = cfg.defaultGroup;
     defaultMode = cfg.defaultMode;
@@ -34,17 +47,14 @@ let
         secrets = cfg.secrets;
         bootstrapMode = true;
       }
-    else if builtins.pathExists cfg.sopsFile
-    then 
-      # Normal mode with SOPS file
+    else 
+      # Normal mode - always try to create accessors
+      # SOPS validation will handle missing files at activation time
       sopswardenLib.mkSecretAccessors {
         inherit config;
         secrets = cfg.secrets;
         bootstrapMode = false;
-      }
-    else 
-      # File doesn't exist, use simple placeholders
-      builtins.mapAttrs (name: _: "/run/secrets/${name}") cfg.secrets;
+      };
 
 in
 {
@@ -74,9 +84,15 @@ in
 
     # SOPS configuration
     sopsFile = mkOption {
-      type = types.path;
-      default = ./secrets.yaml;
-      description = "Path to the encrypted SOPS file";
+      type = types.str;
+      default = "./secrets.yaml";
+      description = ''
+        Path to the encrypted SOPS file.
+        
+        Can be relative (e.g., "./secrets.yaml") or absolute (e.g., "/etc/nixos/secrets.yaml").
+        Relative paths are resolved to absolute paths to satisfy SOPS-nix requirements
+        while avoiding Nix store caching issues when the file is modified externally.
+      '';
     };
 
     ageKeyFile = mkOption {
@@ -86,8 +102,8 @@ in
     };
 
     sopsConfigFile = mkOption {
-      type = types.path;
-      default = ./.sops.yaml;
+      type = types.str;
+      default = "./.sops.yaml";
       description = "Path to the .sops.yaml configuration file";
     };
 
@@ -175,14 +191,12 @@ in
     }
 
     # SOPS secrets configuration - conditional to prevent bootstrap failures
-    (mkIf (cfg.secrets != {} && !cfg.bootstrapMode) (
-      let
-        fileExists = builtins.pathExists cfg.sopsFile;
-      in mkIf fileExists {
-        sops.defaultSopsFile = cfg.sopsFile;
-        sops.secrets = sopsSecrets;
-      }
-    ))
+    (mkIf (cfg.secrets != {} && !cfg.bootstrapMode) {
+      sops.defaultSopsFile = absoluteSopsFile;
+      sops.secrets = sopsSecrets;
+      # Disable validation since we manage files externally
+      sops.validateSopsFiles = false;
+    })
 
     # Package installation
     (mkIf cfg.installPackages {
@@ -195,13 +209,13 @@ in
     })
 
 
-    # Warnings for missing secrets file and bootstrap guidance
+    # Warnings for missing secrets file and bootstrap guidance  
     {
       warnings = 
-        optional (!(builtins.pathExists cfg.sopsFile) && cfg.secrets != {} && !cfg.bootstrapMode)
-          "⚠️  sopswarden: secrets.yaml not found at ${toString cfg.sopsFile}. Run 'sopswarden-sync' to create it." ++
         optional (cfg.bootstrapMode)
-          "🔄 sopswarden: Bootstrap mode enabled. Run 'sopswarden-sync' then disable bootstrap mode and rebuild.";
+          "🔄 sopswarden: Bootstrap mode enabled. Run 'sopswarden-sync' then disable bootstrap mode and rebuild." ++
+        optional (!cfg.bootstrapMode && cfg.secrets != {})
+          "ℹ️  sopswarden: Ensure '${cfg.sopsFile}' exists and contains all defined secrets. Run 'sopswarden-sync' if needed.";
 
       # Note: Disabled assertion for now due to pathExists issues in flake context
       # TODO: Re-enable with better file existence detection
