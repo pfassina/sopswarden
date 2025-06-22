@@ -235,6 +235,41 @@ sopsWarden automatically detects when `secrets.nix` changes:
 - ✅ **No secret exposure** - Hash-based change detection prevents unnecessary decryption
 - ✅ **Graceful failures** - Never blocks deployment if Bitwarden unavailable
 
+## 🔧 Nix Store Compatibility
+
+sopsWarden is fully compatible with Nix flake-based configurations and automatically handles read-only Nix store environments:
+
+### Automatic Path Detection
+- **Detects Nix store paths** and redirects operations to writable locations
+- **Auto-discovers config directories** by searching for `flake.nix`, `configuration.nix`, or `secrets` directory
+- **Intelligent fallback** to common locations: `$HOME/nix`, `$HOME/.config/nixos`, `$HOME/nixos`
+
+### Smart File Handling
+- **Temporary files** use system temp directory instead of read-only Nix store
+- **Output files** written to runtime config directory with clean filenames
+- **SOPS configuration** explicitly specified to avoid config resolution issues
+
+### Zero Configuration Required
+The compatibility fixes are entirely internal - your existing configuration works without changes:
+
+```nix
+services.sopswarden = {
+  enable = true;
+  secrets = {
+    wifi-password = "Home WiFi";
+    api-key = { name = "My Service"; user = "admin@example.com"; };
+  };
+};
+```
+
+### Expected Output
+```bash
+🔧 Detected Nix store secrets file, using runtime directory: /home/user/nix
+🔧 Detected Nix store path, writing to: /home/user/nix/secrets.yaml
+🔄 Syncing secrets from Bitwarden...
+✅ Secrets synced successfully to /home/user/nix/secrets.yaml
+```
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md) for details.

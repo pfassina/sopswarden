@@ -84,6 +84,28 @@ The sync script is generated at build time using Nix string interpolation in `li
 4. **SOPS Encryption** - Creates temporary YAML file and encrypts with age keys
 5. **File Management** - Handles both Nix store and runtime file locations
 
+### Nix Store Compatibility
+
+The script includes comprehensive compatibility for Nix flake environments where configuration files are in read-only Nix store paths:
+
+**Working Directory Detection:**
+- Detects when `SECRETS_FILE` is a Nix store path (`/nix/store/*`)
+- Auto-discovers actual config directory by searching for `flake.nix`, `configuration.nix`, or `secrets` directory
+- Falls back to common locations: `$HOME/nix`, `$HOME/.config/nixos`, `$HOME/nixos`
+
+**Output Path Handling:**
+- Detects when `SOPS_FILE` is a Nix store path
+- Strips Nix store hash prefix using `${filename#*-}` expansion
+- Redirects output to writable runtime directory with clean filename
+
+**Temporary File Management:**
+- Uses system temporary directory (`mktemp -d`) instead of Nix store paths
+- Copies `.sops.yaml` config to temp directory for encryption context
+- Explicitly specifies config with `sops --config .sops.yaml --encrypt`
+- Proper cleanup with `trap` for temporary files
+
+This ensures the script works seamlessly in both traditional filesystem and Nix store environments without requiring user configuration changes.
+
 ### Module Integration
 
 **NixOS Module (`modules/nixos.nix`):**
