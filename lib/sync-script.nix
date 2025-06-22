@@ -206,7 +206,7 @@
 
   # Change to temporary directory and encrypt
   cd "$TEMP_DIR"
-  if ! sops --encrypt secrets.yaml > "$SOPS_FILE"; then
+  if ! sops --config .sops.yaml --encrypt secrets.yaml > "$SOPS_FILE"; then
       echo "❌ Failed to encrypt secrets with sops"
       exit 1
   fi
