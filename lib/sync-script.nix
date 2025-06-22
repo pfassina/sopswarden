@@ -41,7 +41,16 @@
 
   # Resolve relative paths from working directory
   SECRETS_FILE="$(realpath "$SECRETS_FILE")"
-  SOPS_FILE="$(realpath "$SOPS_FILE")"
+  
+  # Handle SOPS_FILE: if it's a Nix store path, write to working directory instead
+  if [[ "$SOPS_FILE" == /nix/store/* ]]; then
+      # Extract filename and write to working directory
+      SOPS_FILE="$WORK_DIR/$(basename "$SOPS_FILE")"
+      echo "🔧 Detected Nix store path, writing to: $SOPS_FILE"
+  else
+      SOPS_FILE="$(realpath "$SOPS_FILE")"
+  fi
+  
   HASH_FILE="$(dirname "$SECRETS_FILE")/.last-sync-hash"
 
   # Check if secrets.nix has changed since last sync
