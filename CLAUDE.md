@@ -49,6 +49,7 @@ deadnix .                                     # Dead code detection
 - `mkSyncScript` - Generates parameterized sopswarden-sync bash script
 - `mkSopsSecrets` - Creates SOPS secret configuration from user definitions
 - `mkSecretAccessors` - **CRITICAL**: Provides runtime access to decrypted secrets via `secrets.secret-name` syntax
+- `mkSecretsJson` - **NEW**: Generates JSON configuration from Nix secrets (bootstrap fix)
 - `mkHashTracker` - Implements change detection for secrets.nix
 
 ### Secret Access Pattern (Core Feature)
@@ -79,10 +80,11 @@ This is implemented by `mkSecretAccessors` in `lib/default.nix:90-102`, which:
 The sync script is generated at build time using Nix string interpolation in `lib/sync-script.nix`. The script:
 
 1. **Configuration Setup** - Resolves file paths and working directory
-2. **Change Detection** - Uses SHA256 hashing to skip unnecessary syncs
-3. **Bitwarden Access** - Fetches secrets using rbw CLI with proper error handling
-4. **SOPS Encryption** - Creates temporary YAML file and encrypts with age keys
-5. **File Management** - Handles both Nix store and runtime file locations
+2. **JSON Configuration Reading** - Reads secret definitions from auto-generated `secrets.json` (eliminating bootstrap chicken-and-egg problem)
+3. **Change Detection** - Uses SHA256 hashing on `secrets.nix` to skip unnecessary syncs
+4. **Bitwarden Access** - Fetches secrets using rbw CLI with proper error handling
+5. **SOPS Encryption** - Creates temporary YAML file and encrypts with age keys
+6. **File Management** - Handles both Nix store and runtime file locations
 
 ### Nix Store Compatibility
 
@@ -112,6 +114,8 @@ This ensures the script works seamlessly in both traditional filesystem and Nix 
 - Imports sops-nix module
 - Configures SOPS with user secrets
 - **Exports secret accessors to other modules via `_module.args.secrets`** (lines 169-172)
+- **NEW**: Auto-generates `secrets.json` from Nix configuration (bootstrap fix)
+- **NEW**: Creates runtime JSON file via activation script for sync command
 - Provides change detection warnings
 - Installs packages and sync command system-wide
 

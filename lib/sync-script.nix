@@ -1,5 +1,6 @@
 {
   secretsFile,
+  secretsJsonFile,
   sopsFile,
   ageKeyFile,
   sopsConfigFile,
@@ -15,6 +16,7 @@
 
   # Configuration
   SECRETS_FILE="${secretsFile}"
+  SECRETS_JSON_FILE="${secretsJsonFile}"
   SOPS_FILE="${sopsFile}"
   AGE_KEY_FILE="${ageKeyFile}"
   SOPS_CONFIG_FILE="${sopsConfigFile}"
@@ -58,8 +60,32 @@
     ''
   }
 
-  # Resolve relative paths from working directory
-  SECRETS_FILE="$(realpath "$SECRETS_FILE")"
+  # Resolve secrets files: prefer working directory versions if they exist
+  if [[ "$SECRETS_JSON_FILE" == /nix/store/* ]]; then
+      # Check if a runtime version exists in working directory
+      if [[ -f "$WORK_DIR/secrets.json" ]]; then
+          SECRETS_JSON_FILE="$WORK_DIR/secrets.json"
+          echo "🔧 Using runtime secrets JSON: $SECRETS_JSON_FILE"
+      else
+          SECRETS_JSON_FILE="$(realpath "$SECRETS_JSON_FILE")"
+          echo "🔧 Using Nix store secrets JSON: $SECRETS_JSON_FILE"
+      fi
+  else
+      SECRETS_JSON_FILE="$(realpath "$SECRETS_JSON_FILE")"
+  fi
+
+  # Also resolve the original .nix file for hash tracking
+  if [[ "$SECRETS_FILE" == /nix/store/* ]]; then
+      if [[ -f "$WORK_DIR/secrets/secrets.nix" ]]; then
+          SECRETS_FILE="$WORK_DIR/secrets/secrets.nix"
+      elif [[ -f "$WORK_DIR/secrets.nix" ]]; then
+          SECRETS_FILE="$WORK_DIR/secrets.nix"
+      else
+          SECRETS_FILE="$(realpath "$SECRETS_FILE")"
+      fi
+  else
+      SECRETS_FILE="$(realpath "$SECRETS_FILE")"
+  fi
   
   # Handle SOPS_FILE: if it's a Nix store path, write to working directory instead
   if [[ "$SOPS_FILE" == /nix/store/* ]]; then
@@ -115,13 +141,18 @@
 
   echo "🔄 Syncing secrets from Bitwarden..."
 
-  # Read secrets.nix and extract secret definitions using nix
-  secret_keys=$(nix eval --impure --raw --expr "
-    let secrets = (import $SECRETS_FILE).secrets;
-    in builtins.concatStringsSep \" \" (builtins.attrNames secrets)")
+  # Check if JSON secrets file exists
+  if [ ! -f "$SECRETS_JSON_FILE" ]; then
+      echo "❌ Error: secrets JSON file not found: $SECRETS_JSON_FILE"
+      echo "💡 Please rebuild your NixOS configuration to generate the JSON file"
+      exit 1
+  fi
 
-  if [ -z "$secret_keys" ]; then
-      echo "⚠️  No secrets found in $SECRETS_FILE"
+  # Read secrets from JSON file
+  secret_keys=$(jq -r '.secrets | keys | join(" ")' "$SECRETS_JSON_FILE")
+
+  if [ -z "$secret_keys" ] || [ "$secret_keys" = "null" ]; then
+      echo "⚠️  No secrets found in $SECRETS_JSON_FILE"
       exit 1
   fi
 
@@ -133,16 +164,8 @@
   for key in $secret_keys; do
       echo "📡 Fetching: $key"
 
-      # Get the secret definition (either string or attrset)
-      secret_def=$(nix eval --impure --raw --expr "
-          let
-            secrets = (import $SECRETS_FILE).secrets;
-            def = secrets.$key;
-          in
-            if builtins.isString def then
-              builtins.toJSON { name = def; user = null; type = \"login\"; field = \"password\"; }
-            else
-              builtins.toJSON (def // { type = def.type or \"login\"; field = def.field or \"password\"; })")
+      # Get the secret definition from JSON
+      secret_def=$(jq -r ".secrets.\"$key\"" "$SECRETS_JSON_FILE")
 
       # Parse the JSON to get all fields
       name=$(echo "$secret_def" | jq -r '.name')

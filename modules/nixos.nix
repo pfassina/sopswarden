@@ -7,9 +7,18 @@ let
   cfg = config.services.sopswarden;
   sopswardenLib = import ../lib { nixpkgs = lib; };
 
+  # Generate JSON configuration from Nix secrets
+  secretsJsonFile = pkgs.writeTextFile {
+    name = "secrets.json";
+    text = builtins.toJSON {
+      secrets = builtins.mapAttrs (name: def: sopswardenLib.normalizeSecretDef def) cfg.secrets;
+    };
+  };
+
   # Create the sync script with user configuration
   syncScript = sopswardenLib.mkSyncScript {
     inherit (cfg) rbwCommand secretsFile sopsFile ageKeyFile sopsConfigFile workingDirectory;
+    secretsJsonFile = "${secretsJsonFile}";
     inherit pkgs;
   };
 
@@ -192,6 +201,27 @@ in
     # Sync command installation  
     (mkIf cfg.installSyncCommand {
       environment.systemPackages = [ syncScript ];
+    })
+
+    # Generate runtime secrets.json file for sync script
+    (mkIf (cfg.secrets != {}) {
+      system.activationScripts.sopswarden-json = {
+        text = ''
+          # Create runtime secrets.json in the directory containing secrets.nix
+          SECRETS_DIR="$(dirname "${toString cfg.secretsFile}")"
+          if [ -w "$SECRETS_DIR" ]; then
+            echo "🔧 Generating secrets.json for sopswarden-sync..."
+            cat > "$SECRETS_DIR/secrets.json" << 'EOF'
+          ${builtins.toJSON {
+            secrets = builtins.mapAttrs (name: def: sopswardenLib.normalizeSecretDef def) cfg.secrets;
+          }}
+          EOF
+          else
+            echo "🔧 Secrets directory not writable, sync script will use Nix store JSON"
+          fi
+        '';
+        deps = [];
+      };
     })
 
     # Warnings and assertions for missing secrets file and change detection

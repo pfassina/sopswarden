@@ -9,6 +9,7 @@ rec {
   mkSyncScript = {
     pkgs,
     secretsFile ? "./secrets.nix",
+    secretsJsonFile ? "./secrets.json",
     sopsFile ? "./secrets.yaml", 
     ageKeyFile ? "~/.config/sops/age/keys.txt",
     sopsConfigFile ? "./.sops.yaml",
@@ -18,7 +19,7 @@ rec {
     workingDirectory ? null
   }:
     pkgs.writeShellScriptBin "sopswarden-sync" (import ./sync-script.nix {
-      inherit secretsFile sopsFile ageKeyFile sopsConfigFile rbwCommand forceSync workingDirectory;
+      inherit secretsFile secretsJsonFile sopsFile ageKeyFile sopsConfigFile rbwCommand forceSync workingDirectory;
     });
 
   # Default packages needed for sopswarden
@@ -100,6 +101,20 @@ rec {
       then tryReadSecret.value  # Return actual content
       else secretPath           # Fallback to path if reading fails
     ) secrets;
+
+  # Function to generate JSON configuration from Nix secrets
+  mkSecretsJson = { pkgs, secrets, outputPath ? "./secrets.json" }:
+    let
+      # Normalize all secret definitions to the complex format
+      normalizedSecrets = builtins.mapAttrs (name: def: normalizeSecretDef def) secrets;
+      # Convert to JSON
+      jsonContent = builtins.toJSON { secrets = normalizedSecrets; };
+    in
+    pkgs.writeTextFile {
+      name = "secrets.json";
+      destination = "/secrets.json";
+      text = jsonContent;
+    };
 
   # Hash-based change detection
   mkHashTracker = { secretsFile, hashFile }:

@@ -234,10 +234,21 @@ When adding secrets to a new NixOS system for the first time:
 
 ### Adding New Secrets
 
+✅ **Fixed:** No more chicken-and-egg bootstrap problems!
+
 1. **Add to Bitwarden** (web interface or `rbw`)
-2. **Update secrets.nix** with mapping
-3. **Sync:** `sopswarden-sync` 
-4. **Deploy:** `nixos-rebuild switch --flake .#host --impure`
+2. **Update secrets.nix** with mapping:
+   ```nix
+   services.sopswarden.secrets = {
+     # existing secrets...
+     new-secret = "New Bitwarden Item";  # Add this line
+   };
+   ```
+3. **Rebuild:** `nixos-rebuild switch --flake .#host --impure`
+   - ✅ Build succeeds and auto-generates fresh `secrets.json`
+   - ⚠️ Shows warning: "secrets.nix has changed since last sync"
+4. **Sync:** `sopswarden-sync` (now finds all secrets including new ones)
+5. **Final rebuild:** `nixos-rebuild switch --flake .#host --impure`
 
 ### Updating Existing Secrets
 
@@ -251,6 +262,14 @@ sopsWarden automatically detects when `secrets.nix` changes:
 - ✅ **Skip sync** when no changes detected
 - ⚠️ **Show warnings** during build when sync needed
 - 🔄 **Auto-sync** with deployment tools
+
+### Bootstrap Problem Fixed
+
+**Previous Issue:** Adding new secrets created a chicken-and-egg problem where:
+- `nixos-rebuild` would fail because the new secret wasn't in `secrets.yaml`
+- `sopswarden-sync` would ignore the new secret because it read from the old Nix store
+
+**Solution:** sopswarden now auto-generates `secrets.json` at build time and prioritizes reading from the current working directory, eliminating bootstrap deadlocks while maintaining the familiar Nix workflow.
 
 ## 📚 Examples
 

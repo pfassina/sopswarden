@@ -1,85 +1,133 @@
-# Sopswarden Nix Store Compatibility Fix - FINAL STATUS
+# Sopswarden Chicken-and-Egg Problem - Unresolved Bootstrap Issue
 
-## Summary
+## Problem Description
 
-Fixed comprehensive compatibility issues when using sopswarden in Nix flake-based NixOS configurations. The script previously failed with "Read-only file system" errors because it attempted to write temporary and output files to read-only Nix store paths.
+Despite the sopswarden flake claiming to have fixed the bootstrap catch-22 problem, **there remains a fundamental chicken-and-egg issue** that prevents users from successfully adding new secrets to their configuration.
 
-## Final Status: 99% WORKING! 🎉
+## Current Workflow That Fails
 
-### ✅ Successfully Fixed:
-1. **Temporary file handling** - Uses system temp directory with proper cleanup
-2. **Working directory detection** - Auto-detects runtime NixOS config directory  
-3. **Output filename extraction** - Strips Nix store hash to get clean filenames
-4. **SOPS configuration** - Explicitly specifies config file path
-5. **Complete auto-sync workflow** - Fetches all secrets and encrypts successfully
+When a user tries to add a new secret (e.g., `zillow-password = "zillow.com"`):
 
-### ❌ Final Minor Issue:
-```bash
-/run/current-system/sw/bin/sopswarden-sync: line 195: /nix/store/.last-sync-hash: Read-only file system
-```
-
-**Root cause:** The `HASH_FILE` variable still points to Nix store when `SECRETS_FILE` is in Nix store.
-
-**Fix needed:**
-```bash
-# Current problematic code:
-HASH_FILE="$(dirname "$SECRETS_FILE")/.last-sync-hash"  # Points to /nix/store/
-
-# Should be:
-if [[ "$SECRETS_FILE" == /nix/store/* ]]; then
-    HASH_FILE="$WORK_DIR/secrets/.last-sync-hash"  # Points to runtime directory
-else
-    HASH_FILE="$(dirname "$SECRETS_FILE")/.last-sync-hash"  # Original behavior
-fi
-```
-
-## Test Results
-
-**Working Output:**
-```bash
-🔧 Detected Nix store secrets file, using runtime directory: /home/mead/nix
-🔧 Detected Nix store path, writing to: /home/mead/nix/secrets.yaml
-🔄 Syncing secrets from Bitwarden...
-📡 Fetching: bitwarden-email
-📡 Fetching: bitwarden-url
-📡 Fetching: git-email
-📡 Fetching: git-username
-📡 Fetching: ssh-maker
-📡 Fetching: ssh-nixos
-📡 Fetching: ssh-pbs
-📡 Fetching: ssh-pihole
-📡 Fetching: ssh-pve
-📡 Fetching: ssh-udm
-📡 Fetching: ssh-unas
-📡 Fetching: ssh-zima
-📡 Fetching: wifi-password
-📡 Fetching: wol-maker-mac
-📡 Fetching: wol-pbs
-📡 Fetching: wol-pve
-🔒 Updating existing encrypted secrets file...
-❌ /nix/store/.last-sync-hash: Read-only file system
-```
-
-**Expected after final fix:**
-```bash
-🔒 Updating existing encrypted secrets file...
-✅ Secrets synced successfully to /home/mead/nix/secrets/secrets.yaml
-```
-
-## User Configuration - No Changes Required
-
-Users don't need to update their sopswarden configuration! The fixes are entirely internal:
-
+### Step 1: User adds secret to configuration
 ```nix
-services.sopswarden = {
-  enable = true;
-  secrets = {
-    wifi-password = "Home WiFi";
-    api-key = { name = "My Service"; user = "admin@example.com"; };
-  };
+# In secrets/secrets.nix
+secrets = {
+  # existing secrets...
+  zillow-password = "zillow.com";  # NEW SECRET
 };
 ```
 
+### Step 2: User attempts to rebuild
+```bash
+nixos-rebuild switch --flake .#maker --impure
+```
+
+**Result**: ✅ Shows helpful warning: `⚠️ sopswarden: secrets.nix has changed since last sync. Run 'sopswarden-sync' to update encrypted secrets.`
+
+**But then**: ❌ **Build fails** with: `secret zillow-password...cannot be found`
+
+### Step 3: User follows guidance to sync secrets
+```bash
+sopswarden-sync
+```
+
+**Result**: ❌ **Sync IGNORES the new secret completely**
+- Only syncs 18 existing secrets
+- Does NOT fetch `zillow-password` from Bitwarden
+- Shows `📝 Encrypted 18 secrets from Bitwarden` (missing the new one)
+
+### Step 4: User tries to rebuild again
+```bash
+nixos-rebuild switch --flake .#maker --impure
+```
+
+**Result**: ❌ **Same failure** - zillow-password still not found in secrets.yaml
+
+## Root Cause: Sopswarden-Sync Reads Stale Configuration
+
+The fundamental issue is that **`sopswarden-sync` reads from the last successful build's Nix store**, not from the current working configuration:
+
+1. **User adds new secret** to `secrets/secrets.nix` ✓
+2. **Build fails** because secret not in secrets.yaml ❌
+3. **`sopswarden-sync` reads from old Nix store** (before new secret was added) ❌
+4. **Sync doesn't include new secret** because it doesn't know about it ❌
+5. **User is permanently stuck** - cannot build to update Nix store ❌
+
+## Evidence
+
+### Configuration Has 19 Secrets
+```bash
+$ nix eval --impure --expr '(builtins.length (builtins.attrNames (import /home/mead/nix/secrets.nix).secrets))'
+19
+```
+
+### Sopswarden-Sync Only Fetches 18
+```bash
+$ FORCE_SYNC=true sopswarden-sync | grep "📝 Encrypted"
+📝 Encrypted 18 secrets from Bitwarden
+```
+
+### Missing Secret Not Even Attempted
+```bash
+$ FORCE_SYNC=true sopswarden-sync 2>&1 | grep -c "📡 Fetching"
+18  # Should be 19
+```
+
+## Configuration Details
+
+### Sopswarden Configuration
+```nix
+services.sopswarden = {
+  enable = true;
+  secretsFile = rootPath + /secrets/secrets.nix;
+  sopsFile = rootPath + /secrets/secrets.yaml;
+  sopsConfigFile = rootPath + /.sops.yaml;
+  defaultOwner = "mead";
+  defaultGroup = "users";
+  
+  # Import secrets from secrets.nix for NixOS evaluation
+  secrets = (import (rootPath + /secrets/secrets.nix)).secrets;
+};
+```
+
+### Auto-Discovery Output
+```
+🔧 Detected Nix store secrets file, using runtime directory: /home/mead/nix
+🔧 Detected Nix store path, writing to: /home/mead/nix/secrets.yaml
+```
+
+## Expected vs Actual Behavior
+
+### Expected (According to README)
+1. Add secret to configuration
+2. Build shows warning but **succeeds with graceful degradation**
+3. Run `sopswarden-sync` to fetch new secret
+4. Rebuild succeeds with all secrets available
+
+### Actual
+1. Add secret to configuration ✓
+2. Build shows warning but **fails at sops layer** ❌
+3. `sopswarden-sync` **ignores new secret entirely** ❌
+4. User is **permanently stuck** ❌
+
 ## Impact
 
-This makes sopswarden fully compatible with modern NixOS flake-based configurations while preserving support for traditional NixOS setups. After the final hash file fix, the auto-sync will work seamlessly in `nx deploy` workflows.
+This makes it **impossible for users to add new secrets** to an existing sopswarden setup without manual intervention or workarounds. The bootstrap fix is incomplete.
+
+## Suggested Fix
+
+The `sopswarden-sync` command needs to:
+
+1. **Read from the current working configuration** when it exists, not just the Nix store
+2. **Fall back gracefully** when secrets don't exist in Bitwarden
+3. **Allow partial sync** where some secrets fail but others succeed
+4. **Provide clear guidance** when secrets are missing from the vault
+
+## Test Environment
+
+- **NixOS**: 25.11.20250619.08f2208
+- **Sopswarden**: github:pfassina/sopswarden/4e3ca181a37fb4c0e2b00494231cbcd58e1b9606
+- **Test Secret**: `zillow-password = "zillow.com"` (verified to exist in Bitwarden vault)
+- **Sopswarden Version**: Updated flake with latest bootstrap fixes
+
+The chicken-and-egg problem persists despite the claimed bootstrap improvements.
