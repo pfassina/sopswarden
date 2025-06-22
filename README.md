@@ -1,8 +1,8 @@
-# Sopswarden
+# sopsWarden
 
 > **SOPS secrets management integrated with Bitwarden for NixOS**
 
-Sopswarden eliminates the pain of manual secret management in NixOS by automatically syncing secrets from your Bitwarden vault to encrypted SOPS files. No more editing encrypted YAML files by hand!
+sopsWarden eliminates the pain of manual secret management in NixOS by automatically syncing secrets from your Bitwarden vault to encrypted SOPS files. No more editing encrypted YAML files by hand!
 
 ## ✨ Features
 
@@ -216,7 +216,7 @@ services.sopswarden = {
 
 ### Smart Change Detection
 
-Sopswarden automatically detects when `secrets.nix` changes:
+sopsWarden automatically detects when `secrets.nix` changes:
 - ✅ **Skip sync** when no changes detected
 - ⚠️ **Show warnings** during build when sync needed
 - 🔄 **Auto-sync** with deployment tools
