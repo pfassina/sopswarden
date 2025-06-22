@@ -87,10 +87,14 @@ rec {
     );
 
   # Function to create secret accessor functions
-  mkSecretAccessors = { config, secrets }:
+  mkSecretAccessors = { config, secrets, bootstrapMode ? false }:
     builtins.mapAttrs (name: _:
       let
-        secretPath = config.sops.secrets.${name}.path;
+        # In bootstrap mode, use placeholder paths since SOPS secrets may not be configured
+        secretPath = 
+          if bootstrapMode then "/run/secrets/${name}"
+          else config.sops.secrets.${name}.path;
+        
         # Read content when possible (requires --impure)
         tryReadSecret = builtins.tryEval (
           lib.removeSuffix "\n" (builtins.readFile secretPath)

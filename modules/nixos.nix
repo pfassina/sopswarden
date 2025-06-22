@@ -24,14 +24,27 @@ let
   };
 
   # Create secret accessors for easy consumption
-  # Only create accessors when SOPS file exists, otherwise use placeholders
+  # Handle both bootstrap mode and missing files gracefully
   secretAccessors = 
-    if builtins.pathExists cfg.sopsFile
-    then sopswardenLib.mkSecretAccessors {
-      inherit config;
-      secrets = cfg.secrets;
-    }
-    else builtins.mapAttrs (name: _: "/run/secrets/${name}") cfg.secrets;
+    if cfg.bootstrapMode
+    then 
+      # In bootstrap mode, always use placeholder paths
+      sopswardenLib.mkSecretAccessors {
+        inherit config;
+        secrets = cfg.secrets;
+        bootstrapMode = true;
+      }
+    else if builtins.pathExists cfg.sopsFile
+    then 
+      # Normal mode with SOPS file
+      sopswardenLib.mkSecretAccessors {
+        inherit config;
+        secrets = cfg.secrets;
+        bootstrapMode = false;
+      }
+    else 
+      # File doesn't exist, use simple placeholders
+      builtins.mapAttrs (name: _: "/run/secrets/${name}") cfg.secrets;
 
 in
 {
