@@ -63,8 +63,10 @@
   
   # Handle SOPS_FILE: if it's a Nix store path, write to working directory instead
   if [[ "$SOPS_FILE" == /nix/store/* ]]; then
-      # Extract filename and write to working directory
-      SOPS_FILE="$WORK_DIR/$(basename "$SOPS_FILE")"
+      # Extract actual filename by removing Nix store hash prefix
+      nix_filename="$(basename "$SOPS_FILE")"
+      actual_filename="''${nix_filename#*-}"  # Remove everything up to and including first dash
+      SOPS_FILE="$WORK_DIR/$actual_filename"
       echo "🔧 Detected Nix store path, writing to: $SOPS_FILE"
   else
       SOPS_FILE="$(realpath "$SOPS_FILE")"
