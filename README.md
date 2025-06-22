@@ -201,6 +201,37 @@ services.sopswarden = {
 
 ## 🔄 Workflow
 
+### First-Time Setup (Bootstrap)
+
+When adding secrets to a new NixOS system for the first time:
+
+1. **Add secrets to your configuration:**
+   ```nix
+   services.sopswarden = {
+     enable = true;
+     secrets = {
+       wifi-password = "Home WiFi";
+       api-key = "My Service";
+     };
+   };
+   ```
+
+2. **Rebuild to install sopswarden:**
+   ```bash
+   nixos-rebuild switch --flake .#host --impure
+   ```
+   
+   ✅ **New:** This will now succeed with helpful guidance instead of cryptic errors!
+   ```
+   ⚠️  sopswarden: secrets.yaml not found. Run 'sopswarden-sync' to create it.
+   ```
+
+3. **Sync secrets and rebuild:**
+   ```bash
+   sopswarden-sync                              # Create encrypted secrets file
+   nixos-rebuild switch --flake .#host --impure  # Final rebuild with secrets
+   ```
+
 ### Adding New Secrets
 
 1. **Add to Bitwarden** (web interface or `rbw`)
@@ -234,6 +265,30 @@ sopsWarden automatically detects when `secrets.nix` changes:
 - ✅ **Proper permissions** - Runtime secrets protected with file permissions
 - ✅ **No secret exposure** - Hash-based change detection prevents unnecessary decryption
 - ✅ **Graceful failures** - Never blocks deployment if Bitwarden unavailable
+
+## 🚀 Improved User Experience
+
+### Bootstrap-Friendly Error Handling
+
+sopsWarden now provides clear, actionable guidance instead of cryptic errors:
+
+**Before:**
+```
+error: opening file '/run/secrets.d/XX/secret-name': No such file or directory
+```
+
+**After:**
+```
+⚠️  sopswarden: secrets.yaml not found at /path/to/secrets.yaml. Run 'sopswarden-sync' to create it.
+⚠️  sopswarden: secrets.nix has changed since last sync. Run 'sopswarden-sync' to update encrypted secrets.
+```
+
+### Graceful Degradation
+
+- ✅ **No more bootstrap deadlocks** - System rebuilds succeed even without secrets file
+- ✅ **Clear guidance** - Exact steps to resolve issues
+- ✅ **Smart warnings** - Only shown when relevant
+- ✅ **Preserved API** - `secrets.secret-name` syntax always works
 
 ## 🔧 Nix Store Compatibility
 

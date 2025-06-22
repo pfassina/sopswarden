@@ -21,6 +21,8 @@
             
             # Use the included secrets.nix file
             secretsFile = ./secrets.nix;
+            # Specify where to write the encrypted secrets file
+            sopsFile = ./secrets.yaml;
             # Override hashFile for the example
             hashFile = "/tmp/sopswarden-basic-hash";
             

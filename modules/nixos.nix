@@ -23,10 +23,14 @@ let
   };
 
   # Create secret accessors for easy consumption
-  secretAccessors = sopswardenLib.mkSecretAccessors {
-    inherit config;
-    secrets = cfg.secrets;
-  };
+  # Only create accessors when SOPS file exists, otherwise use placeholders
+  secretAccessors = 
+    if builtins.pathExists cfg.sopsFile
+    then sopswardenLib.mkSecretAccessors {
+      inherit config;
+      secrets = cfg.secrets;
+    }
+    else builtins.mapAttrs (name: _: "/run/secrets/${name}") cfg.secrets;
 
   # Hash tracking for change detection
   hashTracker = sopswardenLib.mkHashTracker {
@@ -151,18 +155,15 @@ in
   };
 
   config = mkIf cfg.enable (mkMerge [
-    # Basic SOPS configuration
+    # Always configure age and export secret accessors
     {
       sops = {
-        defaultSopsFile = cfg.sopsFile;
         defaultSopsFormat = "yaml";
         
         age = {
           keyFile = cfg.ageKeyFile;
           generateKey = true;
         };
-
-        secrets = sopsSecrets;
       };
 
       # Export secrets for easy access in other modules
@@ -171,6 +172,17 @@ in
         sopswardenSecrets = secretAccessors; # Alternative name
       };
     }
+
+    # SOPS secrets configuration - conditionally set based on file existence
+    # Use try-catch pattern since pathExists may not work reliably with flake paths
+    (mkIf (cfg.secrets != {}) (
+      let
+        fileExists = builtins.pathExists cfg.sopsFile;
+      in mkIf fileExists {
+        sops.defaultSopsFile = cfg.sopsFile;
+        sops.secrets = sopsSecrets;
+      }
+    ))
 
     # Package installation
     (mkIf cfg.installPackages {
@@ -182,10 +194,39 @@ in
       environment.systemPackages = [ syncScript ];
     })
 
-    # Change detection warnings
-    (mkIf cfg.enableChangeDetection {
-      warnings = optional hashTracker.hasChanged
-        "⚠️  sopswarden: secrets.nix has changed since last sync. Run 'sopswarden-sync' to update encrypted secrets.";
-    })
+    # Warnings and assertions for missing secrets file and change detection
+    {
+      warnings = lib.concatLists [
+        # Warning when secrets file doesn't exist
+        (optional (!(builtins.pathExists cfg.sopsFile) && cfg.secrets != {})
+          "⚠️  sopswarden: secrets.yaml not found at ${toString cfg.sopsFile}. Run 'sopswarden-sync' to create it.")
+        
+        # Warning when secrets.nix has changed (only if change detection enabled)
+        (optional (cfg.enableChangeDetection && hashTracker.hasChanged)
+          "⚠️  sopswarden: secrets.nix has changed since last sync. Run 'sopswarden-sync' to update encrypted secrets.")
+      ];
+
+      # Note: Disabled assertion for now due to pathExists issues in flake context
+      # TODO: Re-enable with better file existence detection
+      assertions = [
+        # {
+        #   assertion = cfg.secrets == {} || (builtins.pathExists cfg.sopsFile);
+        #   message = ''
+        #     ❌ sopswarden: secrets.yaml not found at ${toString cfg.sopsFile}
+        #     
+        #     🔧 To fix this:
+        #        1. Run: sopswarden-sync
+        #        2. Then rebuild: sudo nixos-rebuild switch
+        #        
+        #     💡 If sopswarden-sync fails, check:
+        #        - rbw is authenticated: rbw unlock
+        #        - secrets.nix definitions are correct
+        #        - .sops.yaml configuration is valid
+        #        
+        #     📖 For help: https://github.com/pfassina/sopswarden#troubleshooting
+        #   '';
+        # }
+      ];
+    }
   ]);
 }
