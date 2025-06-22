@@ -29,13 +29,39 @@
   # Set working directory to current location
   WORK_DIR="$(pwd)"
 
-  # Handle SOPS_FILE: if it's a Nix store path, write to working directory instead
+  # Handle SOPS_FILE path resolution
   if [[ "$SOPS_FILE" == /nix/store/* ]]; then
-      # Extract actual filename by removing Nix store hash prefix
+      # Nix store path: extract filename and write to working directory
       nix_filename="$(basename "$SOPS_FILE")"
       actual_filename="''${nix_filename#*-}"  # Remove everything up to and including first dash
       SOPS_FILE="$WORK_DIR/$actual_filename"
       echo "🔧 Detected Nix store path, writing to: $SOPS_FILE"
+  elif [[ "$SOPS_FILE" == ./* ]]; then
+      # Relative path: resolve to absolute path from working directory
+      SOPS_FILE="$WORK_DIR/$SOPS_FILE"
+      echo "🔧 Resolved relative path to: $SOPS_FILE"
+  elif [[ "$SOPS_FILE" != /* ]]; then
+      # Not absolute path: treat as relative to working directory
+      SOPS_FILE="$WORK_DIR/$SOPS_FILE"
+      echo "🔧 Resolved relative path to: $SOPS_FILE"
+  fi
+  
+  # Ensure parent directory exists
+  SOPS_DIR="$(dirname "$SOPS_FILE")"
+  if [[ ! -d "$SOPS_DIR" ]]; then
+      echo "📁 Creating directory: $SOPS_DIR"
+      mkdir -p "$SOPS_DIR"
+  fi
+
+  # Handle SOPS_CONFIG_FILE path resolution  
+  if [[ "$SOPS_CONFIG_FILE" == ./* ]]; then
+      # Relative path: resolve to absolute path from working directory
+      SOPS_CONFIG_FILE="$WORK_DIR/$SOPS_CONFIG_FILE"
+      echo "🔧 Resolved SOPS config relative path to: $SOPS_CONFIG_FILE"
+  elif [[ "$SOPS_CONFIG_FILE" != /* ]]; then
+      # Not absolute path: treat as relative to working directory
+      SOPS_CONFIG_FILE="$WORK_DIR/$SOPS_CONFIG_FILE"
+      echo "🔧 Resolved SOPS config relative path to: $SOPS_CONFIG_FILE"
   fi
 
   # Check dependencies
