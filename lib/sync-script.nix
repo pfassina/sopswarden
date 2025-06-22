@@ -33,8 +33,27 @@
       cd "$WORK_DIR"
     ''
     else ''
-      # Use directory containing secrets file as working directory
-      WORK_DIR="$(dirname "$(realpath "$SECRETS_FILE")")"
+      # Detect if secrets file is in Nix store and use runtime directory instead
+      if [[ "$SECRETS_FILE" == /nix/store/* ]]; then
+          # Try to find the actual NixOS configuration directory
+          # Look for common patterns: flake.nix, configuration.nix, or secrets directory
+          WORK_DIR="$(pwd)"
+          
+          # If we're not in a directory with NixOS config files, try some common locations
+          if [[ ! -f "$WORK_DIR/flake.nix" && ! -f "$WORK_DIR/configuration.nix" ]]; then
+              for candidate in "$HOME/nix" "$HOME/.config/nixos" "$HOME/nixos" "$PWD"; do
+                  if [[ -f "$candidate/flake.nix" || -f "$candidate/configuration.nix" || -d "$candidate/secrets" ]]; then
+                      WORK_DIR="$candidate"
+                      break
+                  fi
+              done
+          fi
+          
+          echo "🔧 Detected Nix store secrets file, using runtime directory: $WORK_DIR"
+      else
+          # Original behavior for non-Nix environments
+          WORK_DIR="$(dirname "$(realpath "$SECRETS_FILE")")"
+      fi
       cd "$WORK_DIR"
     ''
   }
