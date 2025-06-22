@@ -72,7 +72,13 @@
       SOPS_FILE="$(realpath "$SOPS_FILE")"
   fi
   
-  HASH_FILE="$(dirname "$SECRETS_FILE")/.last-sync-hash"
+  # Handle HASH_FILE: if secrets file is in Nix store, use runtime directory instead
+  if [[ "$SECRETS_FILE" == /nix/store/* ]]; then
+      HASH_FILE="$WORK_DIR/.last-sync-hash"
+      echo "🔧 Using runtime directory for hash file: $HASH_FILE"
+  else
+      HASH_FILE="$(dirname "$SECRETS_FILE")/.last-sync-hash"
+  fi
 
   # Check if secrets.nix has changed since last sync
   SECRETS_HASH=$(sha256sum "$SECRETS_FILE" 2>/dev/null | cut -d' ' -f1 || echo "no-hash")
