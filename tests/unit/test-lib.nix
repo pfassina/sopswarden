@@ -59,10 +59,29 @@ in pkgs.stdenv.mkDerivation {
     echo "🧪 Starting sopswarden unit tests..."
     
     # Test results
-    simple_result="${if simpleTest then "PASS" else "FAIL"}"
-    complex_result="${if complexTest then "PASS" else "FAIL"}"
-    note_result="${if noteTest then "PASS" else "FAIL"}"
-    sops_result="${if sopsTest then "PASS" else "FAIL"}"
+    if [ "${toString simpleTest}" = "true" ]; then
+      simple_result="PASS"
+    else
+      simple_result="FAIL"
+    fi
+    
+    if [ "${toString complexTest}" = "true" ]; then
+      complex_result="PASS"
+    else
+      complex_result="FAIL"
+    fi
+    
+    if [ "${toString noteTest}" = "true" ]; then
+      note_result="PASS"
+    else
+      note_result="FAIL"
+    fi
+    
+    if [ "${toString sopsTest}" = "true" ]; then
+      sops_result="PASS"
+    else
+      sops_result="FAIL"
+    fi
     
     echo "📋 Testing normalizeSecretDef..."
     echo "✅ Simple string test: $simple_result"

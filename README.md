@@ -22,13 +22,12 @@ sopsWarden eliminates the pain of manual secret management in NixOS by automatic
 ## ✨ Features
 
 - 🔐 **Bitwarden Integration** - Use your existing Bitwarden vault as the source of truth
-- 🎯 **In-Configuration Secrets** - Define secrets directly in your NixOS configuration
+- 🎯 **Simple Configuration** - Define secrets directly in your NixOS configuration
 - 🛡️ **SOPS Encryption** - Secrets encrypted at rest using age keys
-- 🚀 **Zero Bootstrap Issues** - Add new secrets without circular dependency problems
+- 🚀 **Pure Evaluation** - No `--impure` flags or bootstrap modes required
 - 🔄 **Graceful Degradation** - Missing secrets produce warnings, not build failures
-- 🎯 **Type-Safe Access** - Secrets available as `secrets.secret-name` in NixOS configs
-- 🏠 **Home Manager Support** - Works with both NixOS and Home Manager
-- ⚡ **Zero Manual Encryption** - Never touch encrypted files directly
+- 🎯 **Ergonomic Access** - Secrets available as `secrets.secret-name` in NixOS configs
+- ⚡ **Automatic Sync** - Runtime synchronization via systemd services
 
 ## 🚀 Quick Start
 
@@ -101,71 +100,49 @@ Then unlock your vault:
 rbw unlock
 ```
 
-### 4. Sync and deploy
+### 4. Deploy
 
 ```bash
-# Run from your flake root directory (where flake.nix is located)
-cd ~/your-flake-directory
-sopswarden-sync    # Fetch secrets from Bitwarden and encrypt
-nixos-rebuild switch --flake .#myhost --impure
+# Secrets are automatically synced during system activation
+nixos-rebuild switch --flake .#myhost
 ```
 
 ## 📖 How It Works
 
 ```
-Bitwarden Vault → sopswarden-sync → secrets.yaml (encrypted) → NixOS Build → /run/secrets/ (decrypted) → Applications
+Bitwarden Vault → systemd sync → secrets.yaml (encrypted) → /run/secrets/ (decrypted) → Applications
 ```
 
 1. **Store** secrets in Bitwarden (login items + secure notes)
-2. **Define** secret mappings in `secrets.nix`
-3. **Sync** with `sopswarden-sync` to fetch and encrypt
-4. **Build** NixOS with `--impure` flag to read secrets
+2. **Define** secret mappings in your NixOS configuration
+3. **Deploy** with `nixos-rebuild switch` 
+4. **Automatic sync** happens via systemd services during activation
 5. **Use** secrets as `secrets.secret-name` in configurations
 
-## 🚀 Adding New Secrets (Bootstrap Mode)
+## 🚀 Adding New Secrets
 
-When adding new secrets to an existing system, use **bootstrap mode** to avoid circular dependency issues:
-
-### Quick Bootstrap Workflow
+Adding new secrets is now completely seamless - no bootstrap modes or special procedures required:
 
 ```nix
-# 1. Enable bootstrap mode and add new secrets
-services.sopswarden = {
-  enable = true;
-  bootstrapMode = true;  # 🔧 Enable during bootstrap
-  secrets = {
-    # ... existing secrets ...
-    new-secret = "New Bitwarden Item";  # ✅ Add new secrets
-  };
+# Simply add to your configuration
+services.sopswarden.secrets = {
+  # ... existing secrets ...
+  new-secret = "New Bitwarden Item";  # ✅ Just add this line
 };
 ```
 
 ```bash
-# 2. Build system successfully  
-nixos-rebuild switch --flake .#hostname --impure
+# Deploy normally
+nixos-rebuild switch --flake .#hostname
 
-# 3. Sync new secrets from Bitwarden (run from flake root directory)
-cd ~/your-flake-directory  # Where flake.nix is located
-sopswarden-sync
-
-# 4. Disable bootstrap mode
-# Remove `bootstrapMode = true;` from configuration
-
-# 5. Final rebuild
-nixos-rebuild switch --flake .#hostname --impure
+# Secrets are automatically synced during system activation!
 ```
 
-### Why Bootstrap Mode?
-
-Without bootstrap mode, adding new secrets creates a chicken-and-egg problem:
-- ❌ Build fails because new secrets don't exist in secrets.yaml yet
-- ❌ Can't run sopswarden-sync because system won't build to generate updated sync script
-- ❌ Can't update sync script because build fails
-
-Bootstrap mode solves this by:
-- ✅ Bypassing SOPS validation for missing secrets during builds
-- ✅ Allowing sopswarden-sync to be generated with new secret definitions
-- ✅ Enabling the complete bootstrap workflow
+The system automatically handles:
+- ✅ **New secret detection** - Finds new secrets in your configuration
+- ✅ **Graceful sync** - Fetches from Bitwarden during activation  
+- ✅ **Error handling** - Missing secrets produce warnings, not failures
+- ✅ **Pure evaluation** - No `--impure` flags or complex workflows needed
 
 ## 🔧 Configuration
 
@@ -226,10 +203,10 @@ programs.rbw = {
 services.sopswarden = {
   enable = true;
   
-  # File locations (use string paths to avoid caching issues)
-  sopsFile = "./config/secrets.yaml";      # Relative path
-  sopsConfigFile = "./config/.sops.yaml"; # SOPS configuration
-  ageKeyFile = "/custom/path/keys.txt";    # Absolute path for age keys
+  # File locations
+  sopsFile = "/var/lib/sopswarden/secrets.yaml";      # Custom location
+  sopsConfigFile = "/var/lib/sopswarden/.sops.yaml";  # SOPS configuration
+  ageKeyFile = "/custom/path/keys.txt";               # Custom age keys
   
   # rbw configuration  
   rbwCommand = "${pkgs.rbw}/bin/rbw";  # Custom rbw command
@@ -240,8 +217,7 @@ services.sopswarden = {
   defaultMode = "0440";
   
   # Package management
-  installPackages = true;  # Install rbw, sops, age, jq
-  enableChangeDetection = true;  # Warn when secrets.nix changes
+  installPackages = true;  # Install rbw, sops, age
 };
 ```
 
@@ -268,9 +244,7 @@ services.sopswarden = {
 
 ## 🔄 Workflow
 
-### First-Time Setup
-
-Adding secrets to a new NixOS system is now straightforward:
+### Setup and Usage
 
 1. **Add secrets to your configuration:**
    ```nix
@@ -284,52 +258,25 @@ Adding secrets to a new NixOS system is now straightforward:
    };
    ```
 
-2. **Rebuild to install sopswarden:**
+2. **Deploy:**
    ```bash
-   nixos-rebuild switch --flake .#host --impure
+   nixos-rebuild switch --flake .#host
    ```
    
-   ✅ **Always succeeds** - no bootstrap issues!
-   ```
-   ⚠️  sopswarden: secrets.yaml not found. Run 'sopswarden-sync' to create it.
-   ```
-
-3. **Sync secrets and rebuild:**
-   ```bash
-   sopswarden-sync                              # Fetch and encrypt all secrets
-   nixos-rebuild switch --flake .#host --impure  # Final rebuild with secrets
-   ```
+   Secrets are automatically synced during system activation!
 
 ### Adding New Secrets
 
-✅ **Zero bootstrap issues** - adding secrets is seamless!
-
 1. **Add to Bitwarden** (web interface or `rbw`)
-2. **Update your configuration:**
-   ```nix
-   services.sopswarden.secrets = {
-     # existing secrets...
-     new-secret = "New Bitwarden Item";  # Add this line
-   };
-   ```
-3. **Rebuild:** `nixos-rebuild switch --flake .#host --impure`
-   - ✅ **Always succeeds** - new secrets immediately available to sync script
-   - ⚠️ Shows helpful warning about missing secrets file
-4. **Sync:** `sopswarden-sync` ✅ **Finds all secrets including new ones**
-5. **Final rebuild:** `nixos-rebuild switch --flake .#host --impure`
+2. **Update your configuration** (add the new secret)
+3. **Deploy:** `nixos-rebuild switch --flake .#host`
 
 ### Updating Existing Secrets
 
 1. **Update in Bitwarden**
-2. **Sync:** `sopswarden-sync`  
-3. **Deploy:** `nixos-rebuild switch --flake .#host --impure`
+2. **Deploy:** `nixos-rebuild switch --flake .#host`
 
-### Smart Change Detection
-
-sopsWarden automatically detects when `secrets.nix` changes:
-- ✅ **Skip sync** when no changes detected
-- ⚠️ **Show warnings** during build when sync needed
-- 🔄 **Auto-sync** with deployment tools
+The system automatically handles synchronization during deployment.
 
 
 ## 📚 Examples
@@ -348,9 +295,9 @@ sopsWarden automatically detects when `secrets.nix` changes:
 
 ## 🚀 User Experience
 
-### Simplified Configuration
+### Simple Configuration
 
-Define secrets directly in your NixOS configuration - no separate files to manage:
+Define secrets directly in your NixOS configuration:
 
 ```nix
 services.sopswarden.secrets = {
@@ -361,152 +308,66 @@ services.sopswarden.secrets = {
 
 ### Graceful Error Handling
 
-**Clear warnings instead of build failures:**
+Clear warnings instead of build failures:
 ```
-⚠️  sopswarden: secrets.yaml not found. Run 'sopswarden-sync' to create it.
 ⚠️  Warning: Failed to fetch 'Missing Item' - skipping
 📝 Successfully encrypted 5 secrets from Bitwarden
 ```
 
-### Zero Bootstrap Issues
+### Pure Evaluation Benefits
 
-- ✅ **No circular dependencies** - Secrets defined in configuration, not files
-- ✅ **Immediate availability** - New secrets ready to sync after rebuild
-- ✅ **Graceful degradation** - Missing secrets produce warnings, not failures
+- ✅ **No `--impure` flags** - Standard Nix evaluation
+- ✅ **No bootstrap modes** - Just add secrets and deploy
+- ✅ **Automatic sync** - Runtime synchronization via systemd
 - ✅ **Preserved API** - `secrets.secret-name` syntax always works
 
 ## 🏗️ Architecture
 
-### In-Configuration Design
+sopsWarden uses pure evaluation with runtime synchronization:
 
-sopsWarden uses a modern approach that eliminates file dependencies:
-
-- **Direct Configuration**: Secrets defined as NixOS options, not external files
-- **Build-Time Generation**: Sync script generated with embedded secret definitions  
-- **Zero File Dependencies**: No reading from `secrets.nix`, `secrets.json`, or config files
-- **Immediate Availability**: New secrets ready to sync the moment they're added
-
-### How It Works
-
-```nix
-# 1. User defines secrets in configuration
-services.sopswarden.secrets = {
-  wifi-password = "Home WiFi";
-};
-
-# 2. Build generates sync script with embedded secrets
-# 3. Script fetches directly from Bitwarden - no file reading needed
-# 4. Graceful degradation if secrets missing from vault
-```
+- **Pure Evaluation**: Never reads files during `nixos-rebuild`
+- **Runtime Sync**: systemd services handle Bitwarden integration  
+- **Direct Configuration**: Secrets defined as NixOS options
+- **Automatic Management**: No manual secret file editing required
 
 ### Benefits
 
-- ✅ **No bootstrap problems** - Secrets available immediately after rebuild
-- ✅ **Simplified architecture** - No complex path resolution or file detection
-- ✅ **Better error handling** - Clear warnings instead of cryptic failures
+- ✅ **Standard Nix workflow** - No special flags or procedures
+- ✅ **Simplified deployment** - Just `nixos-rebuild switch`
+- ✅ **Better error handling** - Clear warnings instead of build failures
 - ✅ **Flake compatible** - Works seamlessly in any Nix environment
 
 ## 🔧 Troubleshooting
 
-### Working Directory Issues
-
-**Problem**: `sopswarden-sync` fails with path errors like:
-```
-cp: cannot stat '/current/dir/./.sops.yaml': No such file or directory
-```
-
-**Solution**: Run `sopswarden-sync` from your **flake root directory** (where `flake.nix` is located):
-
-```bash
-# ❌ Wrong - running from subdirectory
-cd ~/nix/secrets
-sopswarden-sync  # Fails with path errors
-
-# ✅ Correct - running from flake root  
-cd ~/nix
-sopswarden-sync  # Works correctly
-```
-
-**Why**: Relative paths like `./secrets.yaml` are resolved from your current working directory.
-
-### Path Configuration
-
-**Use string paths, not Nix paths:**
-
-```nix
-# ✅ Correct - string paths
-services.sopswarden = {
-  sopsFile = "./secrets.yaml";        # String
-  sopsConfigFile = "./.sops.yaml";    # String
-};
-
-# ❌ Incorrect - Nix paths (causes caching issues)  
-services.sopswarden = {
-  sopsFile = ./secrets.yaml;          # Nix path - gets cached in store
-  sopsConfigFile = ./.sops.yaml;      # Nix path - gets cached in store
-};
-```
-
-### Bootstrap Mode
-
-**When to use**: Adding new secrets to existing systems.
-
-**Problem**: Build fails when adding new secrets:
-```
-sops-install-secrets: secret new-secret in secrets.yaml is not valid: the key 'new-secret' cannot be found
-```
-
-**Solution**: Use bootstrap mode:
-```nix
-services.sopswarden = {
-  bootstrapMode = true;  # Enable temporarily
-  secrets = {
-    # ... existing secrets ...
-    new-secret = "New Item";  # Add new secrets
-  };
-};
-```
-
-**Workflow**:
-1. Enable `bootstrapMode = true`
-2. Add new secrets to configuration  
-3. Rebuild system
-4. Run `sopswarden-sync`
-5. Disable bootstrap mode and rebuild
-
-### Common Errors
+### Common Issues
 
 **Error**: `rbw unlock` required
 ```bash
 rbw unlock  # Enter your Bitwarden master password
-sopswarden-sync
 ```
+
+**Error**: Secrets not found in Bitwarden
+```
+⚠️  Warning: Failed to fetch 'Missing Item' - skipping
+```
+Check that the item name in Bitwarden matches your configuration.
 
 **Error**: `sops` command not found
 ```bash
-nix-shell -p sops age  # Temporary install
-# Or ensure sops is in your system packages
+# Ensure sopswarden packages are installed
+services.sopswarden.installPackages = true;  # In your config
 ```
 
-**Error**: Permission denied writing to secrets file
-```bash
-# Check file permissions and ownership
-ls -la secrets.yaml
-chmod 644 secrets.yaml  # If needed
+### Configuration
+
+**Default file locations:**
+```
+/var/lib/sopswarden/
+├── secrets.yaml         # Encrypted secrets
+└── .sops.yaml          # SOPS configuration
 ```
 
-### File Layout
-
-**Recommended structure:**
-```
-~/nix/                    # Flake root directory
-├── flake.nix
-├── .sops.yaml           # SOPS configuration
-├── secrets.yaml         # Encrypted secrets (safe to commit)
-└── configuration.nix    # Your NixOS config
-```
-
-**Run sopswarden-sync from:** `~/nix/` (flake root)
+**Age keys:** `~/.config/sops/age/keys.txt`
 
 ### Git Integration
 

@@ -67,10 +67,13 @@ config/
 
 3. **Configure rbw and add secrets to Bitwarden**
 
-4. **Sync and deploy:**
+4. **Deploy:**
    ```bash
-   deploy-with-secrets
+   rbw unlock
+   nixos-rebuild switch --flake .#advanced
    ```
+   
+   Secrets are automatically synced during system activation!
 
 ## Secret Patterns
 

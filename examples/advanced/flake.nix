@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    sopswarden.url = "github:pfassina/sopswarden";
+    sopswarden.url = "path:../..";
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -24,9 +24,9 @@
           services.sopswarden = {
             enable = true;
             
-            # Custom file locations (using string paths to avoid caching issues)
-            sopsFile = "./config/secrets.yaml";
-            sopsConfigFile = "./config/.sops.yaml";
+            # Custom file locations (using absolute paths for pure evaluation)
+            sopsFile = "/var/lib/sopswarden/secrets.yaml";
+            sopsConfigFile = "/var/lib/sopswarden/.sops.yaml";
             
             # Custom rbw configuration (e.g., for self-hosted Bitwarden)
             rbwCommand = "${pkgs.rbw}/bin/rbw";
@@ -155,7 +155,7 @@
               sopswarden-sync
               
               echo "🚀 Deploying system configuration..."
-              sudo nixos-rebuild switch --flake .#advanced --impure
+              sudo nixos-rebuild switch --flake .#advanced
               
               echo "✅ Deployment complete!"
             '')

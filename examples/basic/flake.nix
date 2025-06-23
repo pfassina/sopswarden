@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    sopswarden.url = "github:pfassina/sopswarden";
+    sopswarden.url = "path:../..";
   };
 
   outputs = { self, nixpkgs, sopswarden, ... }: {
@@ -19,9 +19,10 @@
           services.sopswarden = {
             enable = true;
             
-            # Specify where to write the encrypted secrets file (using string path)
-            sopsFile = "./secrets.yaml";
-            sopsConfigFile = "./.sops.yaml";
+            # Use absolute paths to maintain pure evaluation
+            # The systemd services will handle file creation at runtime
+            sopsFile = "/var/lib/sopswarden/secrets.yaml";
+            sopsConfigFile = "/var/lib/sopswarden/.sops.yaml";
             
             # Define your secrets
             secrets = {

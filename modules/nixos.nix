@@ -20,12 +20,9 @@ let
     if lib.hasPrefix "/" cfg.sopsFile 
     then cfg.sopsFile  # Already absolute string
     else 
-      # Convert relative path to absolute using current directory
-      # Use unsafeDiscardStringContext to avoid store path issues
-      let
-        currentDir = builtins.getEnv "PWD";
-        resolvedPath = if currentDir != "" then "${currentDir}/${cfg.sopsFile}" else cfg.sopsFile;
-      in builtins.unsafeDiscardStringContext resolvedPath;
+      # Use unsafeDiscardStringContext to strip any store context from relative paths
+      # This keeps evaluation pure while allowing external file modifications
+      builtins.unsafeDiscardStringContext cfg.sopsFile;
 
   # Create SOPS secrets configuration from direct secrets
   sopsSecrets = sopswardenLib.mkSopsSecrets {
@@ -37,24 +34,11 @@ let
   };
 
   # Create secret accessors for easy consumption
-  # Handle both bootstrap mode and missing files gracefully
-  secretAccessors = 
-    if cfg.bootstrapMode
-    then 
-      # In bootstrap mode, always use placeholder paths
-      sopswardenLib.mkSecretAccessors {
-        inherit config;
-        secrets = cfg.secrets;
-        bootstrapMode = true;
-      }
-    else 
-      # Normal mode - always try to create accessors
-      # SOPS validation will handle missing files at activation time
-      sopswardenLib.mkSecretAccessors {
-        inherit config;
-        secrets = cfg.secrets;
-        bootstrapMode = false;
-      };
+  # Always return SOPS paths - validation happens at runtime
+  secretAccessors = sopswardenLib.mkSecretAccessors {
+    inherit config;
+    secrets = cfg.secrets;
+  };
 
 in
 {
@@ -85,13 +69,13 @@ in
     # SOPS configuration
     sopsFile = mkOption {
       type = types.str;
-      default = "./secrets.yaml";
+      default = "/var/lib/sopswarden/secrets.yaml";
       description = ''
         Path to the encrypted SOPS file.
         
+        Uses absolute path by default to maintain pure evaluation.
         Can be relative (e.g., "./secrets.yaml") or absolute (e.g., "/etc/nixos/secrets.yaml").
-        Relative paths are resolved to absolute paths to satisfy SOPS-nix requirements
-        while avoiding Nix store caching issues when the file is modified externally.
+        Relative paths are resolved using unsafeDiscardStringContext to avoid store issues.
       '';
     };
 
@@ -152,22 +136,6 @@ in
       description = "Whether to make sopswarden-sync command available system-wide";
     };
 
-    # Bootstrap configuration
-    bootstrapMode = mkOption {
-      type = types.bool;
-      default = false;
-      description = ''
-        Enable bootstrap mode to allow system builds when adding new secrets.
-        
-        When enabled, SOPS secret validation is bypassed, allowing you to:
-        1. Add new secrets to your configuration
-        2. Build the system successfully
-        3. Run sopswarden-sync to fetch the new secrets
-        4. Disable bootstrap mode and rebuild normally
-        
-        ⚠️  In bootstrap mode, secret accessors will return file paths instead of content.
-      '';
-    };
 
   };
 
@@ -190,12 +158,67 @@ in
       };
     }
 
-    # SOPS secrets configuration - conditional to prevent bootstrap failures
-    (mkIf (cfg.secrets != {} && !cfg.bootstrapMode) {
+    # SOPS secrets configuration - always configure when secrets are defined
+    (mkIf (cfg.secrets != {}) {
       sops.defaultSopsFile = absoluteSopsFile;
       sops.secrets = sopsSecrets;
-      # Disable validation since we manage files externally
+      # Disable validation since we manage files externally via systemd services
       sops.validateSopsFiles = false;
+    })
+
+    # Runtime secret synchronization and validation
+    (mkIf (cfg.secrets != {}) {
+      # Create directory for sopswarden files
+      systemd.tmpfiles.rules = [
+        "d /var/lib/sopswarden 0755 ${cfg.defaultOwner} ${cfg.defaultGroup} -"
+      ];
+
+      # Service to sync secrets from Bitwarden before system starts
+      systemd.services.sopswarden-sync = {
+        description = "Fetch secrets from Bitwarden into SOPS file";
+        path = with pkgs; [ cfg.rbwPackage sops age ];
+        environment = {
+          SOPS_FILE = cfg.sopsFile;
+          SOPS_CONFIG_FILE = cfg.sopsConfigFile;
+          AGE_KEY_FILE = cfg.ageKeyFile;
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.defaultOwner;
+          Group = cfg.defaultGroup;
+        };
+        script = ''
+          echo "🔄 Syncing secrets from Bitwarden..."
+          ${syncScript}/bin/sopswarden-sync
+        '';
+        wantedBy = [ "sysinit.target" ];
+        before = [ "sops-nix.service" ];
+      };
+
+      # Service to validate SOPS file after sync
+      systemd.services.sopswarden-validate = {
+        description = "Validate SOPS file after sync";
+        path = with pkgs; [ sops ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.defaultOwner;
+          Group = cfg.defaultGroup;
+        };
+        script = ''
+          echo "🔍 Validating SOPS file: ${cfg.sopsFile}"
+          if [[ -f "${cfg.sopsFile}" ]]; then
+            sops --decrypt "${cfg.sopsFile}" > /dev/null
+            echo "✅ SOPS file validation successful"
+          else
+            echo "⚠️  SOPS file not found: ${cfg.sopsFile}"
+            exit 1
+          fi
+        '';
+        requires = [ "sopswarden-sync.service" ];
+        after = [ "sopswarden-sync.service" ];
+        wantedBy = [ "sysinit.target" ];
+        before = [ "sops-nix.service" ];
+      };
     })
 
     # Package installation
@@ -209,35 +232,10 @@ in
     })
 
 
-    # Warnings for missing secrets file and bootstrap guidance  
+    # Informational messages
     {
-      warnings = 
-        optional (cfg.bootstrapMode)
-          "🔄 sopswarden: Bootstrap mode enabled. Run 'sopswarden-sync' then disable bootstrap mode and rebuild." ++
-        optional (!cfg.bootstrapMode && cfg.secrets != {})
-          "ℹ️  sopswarden: Ensure '${cfg.sopsFile}' exists and contains all defined secrets. Run 'sopswarden-sync' if needed.";
-
-      # Note: Disabled assertion for now due to pathExists issues in flake context
-      # TODO: Re-enable with better file existence detection
-      assertions = [
-        # {
-        #   assertion = cfg.secrets == {} || (builtins.pathExists cfg.sopsFile);
-        #   message = ''
-        #     ❌ sopswarden: secrets.yaml not found at ${toString cfg.sopsFile}
-        #     
-        #     🔧 To fix this:
-        #        1. Run: sopswarden-sync
-        #        2. Then rebuild: sudo nixos-rebuild switch
-        #        
-        #     💡 If sopswarden-sync fails, check:
-        #        - rbw is authenticated: rbw unlock
-        #        - secrets.nix definitions are correct
-        #        - .sops.yaml configuration is valid
-        #        
-        #     📖 For help: https://github.com/pfassina/sopswarden#troubleshooting
-        #   '';
-        # }
-      ];
+      warnings = optional (cfg.secrets != {})
+        "ℹ️  sopswarden: Secrets will be synced automatically via systemd services during system activation.";
     }
   ]);
 }

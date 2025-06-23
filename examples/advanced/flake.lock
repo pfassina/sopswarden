@@ -105,19 +105,14 @@
         "sops-nix": "sops-nix"
       },
       "locked": {
-        "lastModified": 1750531551,
-        "narHash": "sha256-CQyQpzWvU1iJgfW1aEi8J5QR38jnQo0ocIkFbiP1+VU=",
-        "owner": "pfassina",
-        "repo": "sopswarden",
-        "rev": "e134c375de6d5649e97003bc539a9ebc2a7cc7d5",
-        "type": "github"
+        "path": "../..",
+        "type": "path"
       },
       "original": {
-        "owner": "pfassina",
-        "ref": "e134c37",
-        "repo": "sopswarden",
-        "type": "github"
-      }
+        "path": "../..",
+        "type": "path"
+      },
+      "parent": []
     },
     "systems": {
       "locked": {
