@@ -224,13 +224,6 @@ services.sopswarden = {
 ## 🏠 Home Manager Integration
 
 ```nix
-{
-  programs.sopswarden = {
-    enable = true;
-    secretsFile = ./user-secrets.nix;
-    sopsFile = ./user-secrets.yaml;
-  };
-  
   # Configure rbw for the user
   programs.rbw = {
     enable = true;
