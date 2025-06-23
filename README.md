@@ -109,22 +109,52 @@ nixos-rebuild switch --flake .#myhost
 
 ## 🔐 Using Secrets in NixOS
 
-Once you've defined secrets, they're available throughout your NixOS configuration using `secrets.secret-name`:
+Once you've defined secrets, they become available throughout your NixOS configuration. Add `secrets` to your module arguments to access them:
 
 ```nix
-# Define secrets once
-services.sopswarden.secrets = {
-  wifi-password = "Home WiFi";
-  api-key = { name = "My Service"; user = "admin@example.com"; };
-  ssl-cert = { name = "Certificates"; type = "note"; field = "certificate"; };
-};
+# Add 'secrets' to your module arguments
+{ config, pkgs, secrets, ... }: {
+  # Define secrets once
+  services.sopswarden.secrets = {
+    wifi-password = "Home WiFi";
+    api-key = { name = "My Service"; user = "admin@example.com"; };
+    ssl-cert = { name = "Certificates"; type = "note"; field = "certificate"; };
+  };
 
-# Use them anywhere in your configuration
-networking.wireless.networks."MyWiFi".psk = secrets.wifi-password;
-services.nginx.virtualHosts."api.example.com".extraConfig = ''
-  proxy_set_header Authorization "Bearer ${secrets.api-key}";
-'';
-environment.etc."ssl/cert.pem".text = secrets.ssl-cert;
+  # Use them anywhere in your NixOS configuration
+  networking.wireless.networks."MyWiFi".psk = secrets.wifi-password;
+  services.nginx.virtualHosts."api.example.com".extraConfig = ''
+    proxy_set_header Authorization "Bearer ${secrets.api-key}";
+  '';
+  environment.etc."ssl/cert.pem".text = secrets.ssl-cert;
+}
+```
+
+### Common Usage Examples
+
+```nix
+{ config, pkgs, secrets, ... }: {
+  services.sopswarden.secrets = {
+    db-password = "Database Admin";
+    api-token = "Service API Key";
+  };
+
+  # Database configuration
+  services.postgresql.initialScript = pkgs.writeText "init.sql" ''
+    CREATE USER app WITH PASSWORD '${secrets.db-password}';
+  '';
+
+  # Systemd service with secret
+  systemd.services.my-app = {
+    serviceConfig.EnvironmentFile = secrets.api-token;
+  };
+
+  # Container with environment variable
+  virtualisation.oci-containers.containers.web-app = {
+    image = "nginx:latest";
+    environment.API_KEY = secrets.api-token;
+  };
+}
 ```
 
 ### ⚠️ rbw Configuration Caveat
@@ -146,6 +176,12 @@ programs.rbw.settings.email = secrets.rbw-email;  # This won't work
 ```
 
 Support for using secrets in rbw configuration is under development.
+
+### 🧪 Home Manager Support
+
+Home Manager integration is currently **experimental**. While a Home Manager module exists, the `secrets.*` pattern may not work as expected in Home Manager configurations. Investigation is ongoing to determine the best approach for Home Manager secrets integration.
+
+For now, use sopsWarden primarily with NixOS system-level configurations.
 
 ## 📖 How It Works
 
