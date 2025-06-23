@@ -107,6 +107,46 @@ rbw unlock
 nixos-rebuild switch --flake .#myhost
 ```
 
+## 🔐 Using Secrets in NixOS
+
+Once you've defined secrets, they're available throughout your NixOS configuration using `secrets.secret-name`:
+
+```nix
+# Define secrets once
+services.sopswarden.secrets = {
+  wifi-password = "Home WiFi";
+  api-key = { name = "My Service"; user = "admin@example.com"; };
+  ssl-cert = { name = "Certificates"; type = "note"; field = "certificate"; };
+};
+
+# Use them anywhere in your configuration
+networking.wireless.networks."MyWiFi".psk = secrets.wifi-password;
+services.nginx.virtualHosts."api.example.com".extraConfig = ''
+  proxy_set_header Authorization "Bearer ${secrets.api-key}";
+'';
+environment.etc."ssl/cert.pem".text = secrets.ssl-cert;
+```
+
+### ⚠️ rbw Configuration Caveat
+
+**Do not use `secrets.*` for configuring rbw itself** - this creates circular dependencies since rbw is needed to fetch the secrets. Configure rbw directly in your NixOS configuration:
+
+```nix
+# ✅ Correct - configure rbw directly
+programs.rbw = {
+  enable = true;
+  settings = {
+    email = "user@example.com";  # Direct configuration
+    base_url = "https://vault.example.com";
+  };
+};
+
+# ❌ Avoid - don't use secrets for rbw config
+programs.rbw.settings.email = secrets.rbw-email;  # This won't work
+```
+
+Support for using secrets in rbw configuration is under development.
+
 ## 📖 How It Works
 
 ```
