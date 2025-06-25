@@ -108,7 +108,12 @@ in
     defaultOwner = mkOption {
       type = types.str;
       default = "root";
-      description = "Default owner for secret files";
+      description = ''
+        Default owner for secret files and the user account that has rbw access.
+        
+        IMPORTANT: This user must have rbw configured and unlocked for sopswarden to work.
+        For most setups, this should be set to your primary user account (e.g., "myuser").
+      '';
     };
 
     defaultGroup = mkOption {
@@ -189,6 +194,7 @@ in
           Type = "oneshot";
           User = cfg.defaultOwner;
           Group = cfg.defaultGroup;
+          WorkingDirectory = config.users.users.${cfg.defaultOwner}.home;
         };
         script = ''
           echo "🔄 Syncing secrets from Bitwarden..."
