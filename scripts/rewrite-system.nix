@@ -8,7 +8,7 @@ let
     placeholders;
 in
 ''
-  set -eo pipefail
+  set -e
   echo "🔄 Sopswarden: substituting secret sentinels in system files..."
 
   # Iterate over the static list produced above
@@ -16,21 +16,34 @@ in
     token=''${pair%%|*}       # token is left of the first "|"
     secretFile=''${pair#*|}   # path  is right of the first "|"
 
-    [ -f "$secretFile" ] || continue
+    echo "  🔍 Processing token: $token -> $secretFile"
+    
+    if [ ! -f "$secretFile" ]; then
+      echo "  ⚠️  Secret file not found: $secretFile"
+      continue
+    fi
+    
     secretValue=$(cat "$secretFile")
+    echo "  ✓ Read secret value (''${#secretValue} chars)"
 
-    # Search only writable regular files under /etc
-    find /etc -xtype f ! -path "/etc/static/*" -print0 2>/dev/null |
-      xargs -0 grep -lZ "$token" 2>/dev/null |
-      while IFS= read -r -d $'\0' f; do
-        # Skip if real target lives inside /nix/store
-        if [[ "$(realpath "$f")" == /nix/store/* ]]; then
-          echo "  ⚠️  Skip read-only $f"
-          continue
-        fi
-        echo "  📝 Substituting $token in $f"
-        sed -i "s|$token|$secretValue|g" "$f"
-      done
+    # Search for files containing the token - simplified approach
+    echo "  🔍 Searching for files containing: $token"
+    found_files=0
+    
+    # Look in common config locations
+    for search_dir in /etc/nixos /etc; do
+      if [ -d "$search_dir" ]; then
+        find "$search_dir" -type f -name "*.conf" -o -name "*.config" -o -name "*config*" 2>/dev/null | while read -r f; do
+          if [ -f "$f" ] && ! [[ "$(realpath "$f" 2>/dev/null || echo "$f")" == /nix/store/* ]]; then
+            if grep -q "$token" "$f" 2>/dev/null; then
+              echo "  📝 Substituting $token in $f"
+              sed -i "s|$token|$secretValue|g" "$f" || echo "  ⚠️  Failed to substitute in $f"
+              found_files=$((found_files + 1))
+            fi
+          fi
+        done
+      fi
+    done
   done
 
   echo "✅ Sopswarden: system secret substitution complete"
