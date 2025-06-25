@@ -17,7 +17,8 @@ in rec {
                    then secretPath.name
                    else throw "secretString: unable to determine secret name from ${toString secretPath}";
     in
-    config.sops.placeholder.${secretName};
+    # Use the SOPS placeholder if it exists, otherwise fall back to the path
+    config.sops.placeholder.${secretName} or secretPath;
 
   ## 3.  Literal string *in the store* (unsafe, but offered knowingly)
   secretLiteral = secretPath:
