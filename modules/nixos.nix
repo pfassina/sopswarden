@@ -366,7 +366,7 @@ in
               val=$(cat "$secretFile")
               
               # Search user home for files containing the token
-              find "$HOME" -type f \( -name ".*" -o -name "*.conf" -o -name "*.config" \) ! -path "$HOME/.nix-profile/*" ! -path "$HOME/.cache/*" 2>/dev/null | while read -r f; do
+              find "$HOME" -type f \( -name ".*" -o -name "*.conf" -o -name "*.config" -o -name "config" \) ! -path "$HOME/.nix-profile/*" ! -path "$HOME/.cache/*" 2>/dev/null | while read -r f; do
                 if grep -q "$token" "$f" 2>/dev/null; then
                   echo "  📝 Substituting $token in $f"
                   sed -i "s|$token|$val|g" "$f" || true

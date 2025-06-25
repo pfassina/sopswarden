@@ -33,7 +33,7 @@ in
         secretFile=''${pair#*|}
         if [ -f "$secretFile" ]; then
           val=$(cat "$secretFile")
-          find "$HOME" -xtype f -not -path "$HOME/.nix-profile/*" -name ".*" -o -name "*.conf" -o -name "*.config" 2>/dev/null | while read -r f; do
+          find "$HOME" -xtype f -not -path "$HOME/.nix-profile/*" \( -name ".*" -o -name "*.conf" -o -name "*.config" -o -name "config" \) 2>/dev/null | while read -r f; do
             if [ -f "$f" ] && grep -q "$token" "$f" 2>/dev/null; then
               echo "  📝 Substituting $token in $f"
               sed -i "s|$token|$val|g" "$f" || true
@@ -57,7 +57,7 @@ in
         
         if [ -n "$token" ] && [ -n "$secretFile" ] && [ -f "$secretFile" ]; then
           val=$(cat "$secretFile")
-          find "$HOME" -xtype f -not -path "$HOME/.nix-profile/*" -name ".*" -o -name "*.conf" -o -name "*.config" 2>/dev/null | while read -r f; do
+          find "$HOME" -xtype f -not -path "$HOME/.nix-profile/*" \( -name ".*" -o -name "*.conf" -o -name "*.config" -o -name "config" \) 2>/dev/null | while read -r f; do
             if [ -f "$f" ] && grep -q "$token" "$f" 2>/dev/null; then
               echo "  📝 Substituting $token in $f"
               sed -i "s|$token|$val|g" "$f" || true
