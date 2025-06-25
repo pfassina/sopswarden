@@ -16,7 +16,9 @@
     in
     {
       # Library functions for other flakes to use
-      lib = lib;
+      lib = lib // {
+        sopsWarden = import ./lib/secret.nix;
+      };
 
       # NixOS modules
       nixosModules = {
@@ -69,7 +71,7 @@
         # Apps for nix run  
         apps.sopswarden-bootstrap = {
           type = "app";
-          program = "${self.packages.${system}.sopswarden-bootstrap}/bin/sopswarden-bootstrap";
+          program = "${self.packages.${system}.sopswarden-sync}/bin/sopswarden-sync";
         };
 
         # Checks for CI

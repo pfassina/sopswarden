@@ -73,9 +73,8 @@ in
       description = ''
         Path to the encrypted SOPS file.
         
-        Uses absolute path by default to maintain pure evaluation.
-        Can be relative (e.g., "./secrets.yaml") or absolute (e.g., "/etc/nixos/secrets.yaml").
-        Relative paths are resolved using unsafeDiscardStringContext to avoid store issues.
+        This is the canonical location for all sopswarden secrets.
+        The bootstrap command and sync services will read/write this file.
       '';
     };
 
