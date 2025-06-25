@@ -19,8 +19,8 @@
       lib = lib // {
         # Export the main library functions
         inherit (lib) mkSyncScript mkSopsSecrets mkSecretAccessors normalizeSecretDef;
-        # Helper factory - users call this with their lib and config
-        mkSopsWardenHelpers = { lib, config }: import ./lib/secret.nix { inherit lib config; };
+        # Clean sopsWarden helper export
+        sopsWarden = import ./lib/secret.nix { inherit (nixpkgs) lib; };
       };
 
       # NixOS modules

@@ -40,6 +40,16 @@ let
     secrets = cfg.secrets;
   };
 
+  # Build the token → file map once for runtime substitution
+  sopswardenHelpers = import ../lib/secret.nix { inherit lib; };
+  secretNames = builtins.attrNames cfg.secrets;
+  placeholders = builtins.listToAttrs (
+    map (secretName: {
+      name = sopswardenHelpers.mkSentinel secretName;  # "__SOPSWARDEN_GIT-USERNAME__"
+      value = config.sops.secrets.${secretName}.path;   # "/run/secrets/git-username"
+    }) secretNames
+  );
+
 in
 {
   imports = [
@@ -140,6 +150,13 @@ in
       description = "Whether to make sopswarden-sync command available system-wide";
     };
 
+    # Home Manager integration
+    enableHmIntegration = mkOption {
+      type = types.bool;
+      default = true;
+      description = "Add the rewrite hook to Home-Manager users when possible";
+    };
+
     # Internal options for runtime substitution
     internal.placeholders = mkOption {
       type = types.attrsOf types.str;
@@ -192,20 +209,8 @@ in
       # Disable validation since we manage files externally via systemd services
       sops.validateSopsFiles = false;
 
-      # Collect sentinel-to-path mappings for runtime substitution
-      services.sopswarden.internal.placeholders = 
-        let
-          sopswardenHelpers = import ../lib/secret.nix { inherit lib; };
-        in
-        lib.mkMerge (
-          map (secretPath: 
-            let 
-              secretName = builtins.baseNameOf secretPath;
-              sentinel = sopswardenHelpers.mkSentinel secretName;
-            in 
-            { ${sentinel} = secretPath; }
-          ) (builtins.attrValues secretAccessors)
-        );
+      # Store the placeholders mapping for use by activation scripts
+      services.sopswarden.internal.placeholders = placeholders;
     })
 
     # Runtime secret synchronization and validation
@@ -317,43 +322,26 @@ in
         wantedBy = [ "default.target" ];
       };
 
-      # Runtime substitution hook for NixOS system files
+      # System-side substitution using helper script
       system.activationScripts.sopswarden-rewrite = lib.stringAfter [ "specialfs" ] ''
+        set -eo pipefail
         echo "🔄 Sopswarden: substituting secret sentinels in system files..."
-        ${lib.concatStringsSep "\n" (lib.mapAttrsToList (sentinel: secretPath: ''
-          if [[ -f "${secretPath}" ]]; then
-            secret_content=$(cat "${secretPath}")
-            # Replace sentinels in /etc files generated this activation
-            find /etc -type f -name "*.conf" -o -name "*.cfg" -o -name "*.config" -o -name "*config*" 2>/dev/null | while read -r f; do
-              if [[ -f "$f" ]] && grep -q "${sentinel}" "$f" 2>/dev/null; then
-                echo "  📝 Substituting ${sentinel} in $f"
-                sed -i 's|${sentinel}|'"$secret_content"'|g' "$f"
-              fi
+        ${lib.concatStringsSep "\n" (lib.mapAttrsToList (token: file: ''
+          if [ -f "${file}" ]; then
+            val=$(cat "${file}")
+            grep -RlZ -- "${token}" /etc 2>/dev/null | while IFS= read -r -d $'\0' f; do
+              echo "  📝 Substituting ${token} in $f"
+              sed -i "s|${token}|$val|g" "$f"
             done
           fi
         '') cfg.internal.placeholders)}
-        echo "✅ Sopswarden: secret substitution complete"
+        echo "✅ Sopswarden: system secret substitution complete"
       '';
     })
 
-    # Runtime substitution for Home Manager (when available, users need to set this up separately)
-    # This is just documentation - users should add this to their home-manager configuration:
-    # home.activation.sopswarden-rewrite = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-    #   echo "🔄 Sopswarden: substituting secret sentinels in home files..."
-    #   export PATH="${pkgs.gnugrep}/bin:${pkgs.gnused}/bin:${pkgs.findutils}/bin:$PATH"
-    #   for sentinel in __SOPSWARDEN_*__; do
-    #     if [[ -f "/run/secrets/''${sentinel#__SOPSWARDEN_}" ]]; then
-    #       secret_content=$(cat "/run/secrets/''${sentinel#__SOPSWARDEN_}")
-    #       find "$HOME" -type f \( -name "*.conf" -o -name "*.cfg" -o -name "*.config" -o -name "*config*" -o -name ".git*" \) 2>/dev/null | while read -r f; do
-    #         if [[ -f "$f" ]] && grep -q "$sentinel" "$f" 2>/dev/null; then
-    #           echo "  📝 Substituting $sentinel in $f"
-    #           sed -i "s|$sentinel|$secret_content|g" "$f"
-    #         fi
-    #       done
-    #     fi
-    #   done
-    #   echo "✅ Sopswarden: home secret substitution complete"
-    # '';
+    # Home Manager integration - TODO: Implement automatic detection
+    # For now, users need to manually import the Home Manager module
+    # This ensures compatibility with systems that don't use Home Manager
     {}
 
     # Package installation
