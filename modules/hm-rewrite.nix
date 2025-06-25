@@ -21,7 +21,7 @@ in
       val=$(cat "$secretFile")
       find "$HOME" -xtype f -not -path "$HOME/.nix-profile/*" -print0 2>/dev/null |
         xargs -0 grep -lZ "$token" 2>/dev/null |
-        while IFS= read -r -d '' f; do
+        while IFS= read -r -d $'\0' f; do
           echo "  📝 Substituting $token in $f"
           sed -i "s|$token|$val|g" "$f"
         done

@@ -22,7 +22,7 @@ in
     # Search only writable regular files under /etc
     find /etc -xtype f ! -path "/etc/static/*" -print0 2>/dev/null |
       xargs -0 grep -lZ "$token" 2>/dev/null |
-      while IFS= read -r -d '' f; do
+      while IFS= read -r -d $'\0' f; do
         # Skip if real target lives inside /nix/store
         if [[ "$(realpath "$f")" == /nix/store/* ]]; then
           echo "  ⚠️  Skip read-only $f"
