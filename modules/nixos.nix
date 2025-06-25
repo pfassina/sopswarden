@@ -178,40 +178,43 @@ in
         "d /var/lib/sopswarden 0755 ${cfg.defaultOwner} ${cfg.defaultGroup} -"
       ];
 
-      # Service to sync secrets from Bitwarden before system starts
-      systemd.services.sopswarden-sync = {
-        description = "Fetch secrets from Bitwarden into SOPS file";
+      # Allow user service to run without login session
+      users.users.${cfg.defaultOwner}.linger = true;
+
+      # User service to sync secrets from Bitwarden after user login
+      systemd.user.services.sopswarden-sync = {
+        description = "Fetch secrets from Bitwarden into SOPS file (user session)";
+        after = [ "rbw-agent.socket" ];
+        wants = [ "rbw-agent.socket" ];
         path = with pkgs; [ cfg.rbwPackage sops age ];
         environment = {
           SOPS_FILE = cfg.sopsFile;
           SOPS_CONFIG_FILE = cfg.sopsConfigFile;
           AGE_KEY_FILE = cfg.ageKeyFile;
-          HOME = config.users.users.${cfg.defaultOwner}.home;
-          XDG_CONFIG_HOME = "${config.users.users.${cfg.defaultOwner}.home}/.config";
-          XDG_DATA_HOME = "${config.users.users.${cfg.defaultOwner}.home}/.local/share";
         };
         serviceConfig = {
           Type = "oneshot";
-          User = cfg.defaultOwner;
-          Group = cfg.defaultGroup;
-          WorkingDirectory = config.users.users.${cfg.defaultOwner}.home;
         };
         script = ''
+          # Check if rbw is unlocked, skip if not
+          if ! ${cfg.rbwPackage}/bin/rbw status --quiet; then
+            echo "🔒 rbw vault is locked - skipping sync"
+            echo "💡 Run 'rbw unlock' to enable automatic sync"
+            exit 0
+          fi
+          
           echo "🔄 Syncing secrets from Bitwarden..."
           ${syncScript}/bin/sopswarden-sync
         '';
-        wantedBy = [ "sysinit.target" ];
-        before = [ "sops-nix.service" ];
+        wantedBy = [ "default.target" ];
       };
 
-      # Service to validate SOPS file after sync
-      systemd.services.sopswarden-validate = {
+      # User service to validate SOPS file after sync
+      systemd.user.services.sopswarden-validate = {
         description = "Validate SOPS file after sync";
         path = with pkgs; [ sops ];
         serviceConfig = {
           Type = "oneshot";
-          User = cfg.defaultOwner;
-          Group = cfg.defaultGroup;
         };
         script = ''
           echo "🔍 Validating SOPS file: ${cfg.sopsFile}"
@@ -220,13 +223,13 @@ in
             echo "✅ SOPS file validation successful"
           else
             echo "⚠️  SOPS file not found: ${cfg.sopsFile}"
+            echo "💡 Run 'systemctl --user start sopswarden-sync' to create the file"
             exit 1
           fi
         '';
         requires = [ "sopswarden-sync.service" ];
         after = [ "sopswarden-sync.service" ];
-        wantedBy = [ "sysinit.target" ];
-        before = [ "sops-nix.service" ];
+        wantedBy = [ "default.target" ];
       };
     })
 
