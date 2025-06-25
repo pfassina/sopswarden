@@ -171,10 +171,11 @@ in
         };
       };
 
-      # Export secrets for easy access in other modules
+      # Export secrets and helpers for easy access in other modules
       _module.args = { 
         secrets = secretAccessors;
         sopswardenSecrets = secretAccessors; # Alternative name
+        sopswarden = import ../lib/secret.nix { inherit lib config; };
       };
     }
 
