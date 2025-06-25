@@ -322,21 +322,12 @@ in
         wantedBy = [ "default.target" ];
       };
 
-      # System-side substitution using helper script
-      system.activationScripts.sopswarden-rewrite = lib.stringAfter [ "specialfs" ] ''
-        set -eo pipefail
-        echo "🔄 Sopswarden: substituting secret sentinels in system files..."
-        ${lib.concatStringsSep "\n" (lib.mapAttrsToList (token: file: ''
-          if [ -f "${file}" ]; then
-            val=$(cat "${file}")
-            grep -RlZ -- "${token}" /etc 2>/dev/null | while IFS= read -r -d $'\0' f; do
-              echo "  📝 Substituting ${token} in $f"
-              sed -i "s|${token}|$val|g" "$f"
-            done
-          fi
-        '') cfg.internal.placeholders)}
-        echo "✅ Sopswarden: system secret substitution complete"
-      '';
+      # System-side substitution using helper script  
+      system.activationScripts.sopswarden-rewrite = lib.stringAfter [ "specialfs" ]
+        (import ../scripts/rewrite-system.nix {
+          placeholders = cfg.internal.placeholders;
+          inherit lib;
+        });
     })
 
     # Home Manager integration - TODO: Implement automatic detection

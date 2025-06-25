@@ -29,10 +29,13 @@
         sopswarden = self.nixosModules.default;
       };
 
-      # Home Manager modules (optional)
+      # Home Manager modules
       homeManagerModules = {
         default = import ./modules/home-manager.nix { lib = nixpkgs.lib; };
-        sopswarden = self.homeManagerModules.default;
+        sopswarden = { config, lib, ... }:
+          let
+            placeholders = lib.mkDefault (config.nixosConfig.services.sopswarden.internal.placeholders or {});
+          in import ./modules/hm-rewrite.nix { inherit lib placeholders; };
       };
 
       # Overlay for packages
