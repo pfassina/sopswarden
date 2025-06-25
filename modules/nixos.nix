@@ -235,7 +235,7 @@ in
           fi
           
           # Check if rbw is already unlocked (from user session)
-          if ${cfg.rbwPackage}/bin/rbw status --quiet 2>/dev/null; then
+          if ${cfg.rbwPackage}/bin/rbw unlocked 2>/dev/null; then
             echo "🔄 rbw is unlocked, updating secrets from Bitwarden..."
             ${syncScript}/bin/sopswarden-sync
           else
@@ -261,7 +261,7 @@ in
         };
         script = ''
           # Check if rbw is unlocked, skip if not
-          if ! ${cfg.rbwPackage}/bin/rbw status --quiet; then
+          if ! ${cfg.rbwPackage}/bin/rbw unlocked; then
             echo "🔒 rbw vault is locked - skipping sync"
             echo "💡 Run 'rbw unlock' to enable automatic sync"
             exit 0

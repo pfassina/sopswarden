@@ -51,7 +51,7 @@ fi
 
 # Step 2: Verify rbw is unlocked
 echo -e "\n${YELLOW}🔓 Checking Bitwarden authentication...${NC}"
-if ! rbw status --quiet; then
+if ! rbw unlocked; then
     echo -e "${RED}❌ Bitwarden vault is locked${NC}"
     echo -e "${YELLOW}💡 Please run 'rbw unlock' first${NC}"
     exit 1
