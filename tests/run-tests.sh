@@ -62,12 +62,20 @@ run_test "Library Functions Test" \
     "nix-build tests/core/test-lib-functions.nix --no-link >/dev/null 2>&1" \
     "Tests all library functions including mkSecretAccessors"
 
+run_test "Secret Substitution Test" \
+    "nix-build tests/core/test-secret-substitution.nix --no-link >/dev/null 2>&1" \
+    "Tests secretString sentinels and runtime substitution system"
+
 # ===== MODULE TESTS =====
 echo -e "\n${PURPLE}📦 MODULE INTEGRATION TESTS${NC}"
 
 run_test "NixOS Module Test" \
     "nix-build tests/modules/test-nixos-module.nix --no-link >/dev/null 2>&1" \
     "Tests NixOS module configuration and systemd services"
+
+run_test "Home Manager Module Test" \
+    "nix-build tests/modules/test-home-manager.nix --no-link >/dev/null 2>&1" \
+    "Tests Home Manager integration with secret substitution"
 
 
 # ===== WORKFLOW TESTS =====

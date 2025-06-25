@@ -330,10 +330,55 @@ in
         });
     })
 
-    # Home Manager integration - TODO: Implement automatic detection
-    # For now, users need to manually import the Home Manager module
-    # This ensures compatibility with systems that don't use Home Manager
-    {}
+    # Automatic user-level secret substitution via systemd user service
+    # This works regardless of Home Manager setup and runs after user login
+    (mkIf (cfg.secrets != {} && cfg.enableHmIntegration) {
+      # Write placeholders to system location for user services to read
+      environment.etc."sopswarden/placeholders.json" = {
+        text = builtins.toJSON cfg.internal.placeholders;
+        mode = "0644";
+      };
+
+      # User service that runs secret substitution for user files
+      systemd.user.services.sopswarden-user-rewrite = {
+        description = "Sopswarden: substitute secret sentinels in user files";
+        after = [ "sopswarden-sync.service" ];
+        wantedBy = [ "default.target" ];
+        path = with pkgs; [ gnugrep gnused findutils coreutils ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          set -e
+          echo "🔄 Sopswarden: substituting secret sentinels in user files..."
+          
+          # Read placeholders from system file
+          if [ ! -f "/etc/sopswarden/placeholders.json" ]; then
+            echo "  ⚠️  No placeholders file found - skipping"
+            exit 0
+          fi
+          
+          # Parse JSON and substitute secrets in user files
+          ${pkgs.jq}/bin/jq -r 'to_entries[] | "\(.key)|\(.value)"' /etc/sopswarden/placeholders.json | while IFS='|' read -r token secretFile; do
+            if [ -f "$secretFile" ]; then
+              echo "  🔍 Processing $token -> $secretFile"
+              val=$(cat "$secretFile")
+              
+              # Search user home for files containing the token
+              find "$HOME" -type f \( -name ".*" -o -name "*.conf" -o -name "*.config" \) ! -path "$HOME/.nix-profile/*" ! -path "$HOME/.cache/*" 2>/dev/null | while read -r f; do
+                if grep -q "$token" "$f" 2>/dev/null; then
+                  echo "  📝 Substituting $token in $f"
+                  sed -i "s|$token|$val|g" "$f" || true
+                fi
+              done
+            fi
+          done
+          
+          echo "✅ Sopswarden: user secret substitution complete"
+        '';
+      };
+    })
 
     # Package installation
     (mkIf cfg.installPackages {
