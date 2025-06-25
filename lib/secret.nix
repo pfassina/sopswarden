@@ -1,13 +1,16 @@
 # lib/secret.nix
-{ lib, config }:
+{ lib, ... }:
 
 let
-  esc = lib.escape [ "$" "}" ];
+  mkSentinel = name: "__SOPSWARDEN_${name}__";
 in rec {
+  # Export mkSentinel for use in the module
+  inherit mkSentinel;
+  
   ## 1.  The default: just a path (safe, zero copy in /nix/store)
   path = p: p;
 
-  ## 2.  Runtime-string for template / extraConfig use-cases
+  ## 2.  Runtime-string that emits sentinel for activation-time substitution
   secretString = secretPath:
     let
       # Extract the secret name from the path like "/run/secrets/immich-url" -> "immich-url"
@@ -17,8 +20,7 @@ in rec {
                    then secretPath.name
                    else throw "secretString: unable to determine secret name from ${toString secretPath}";
     in
-    # Use the SOPS placeholder if it exists, otherwise fall back to the path
-    config.sops.placeholder.${secretName} or secretPath;
+    mkSentinel secretName;
 
   ## 3.  Literal string *in the store* (unsafe, but offered knowingly)
   secretLiteral = secretPath:

@@ -17,7 +17,10 @@
     {
       # Library functions for other flakes to use
       lib = lib // {
-        sopsWarden = import ./lib/secret.nix;
+        # Export the main library functions
+        inherit (lib) mkSyncScript mkSopsSecrets mkSecretAccessors normalizeSecretDef;
+        # Helper factory - users call this with their lib and config
+        mkSopsWardenHelpers = { lib, config }: import ./lib/secret.nix { inherit lib config; };
       };
 
       # NixOS modules

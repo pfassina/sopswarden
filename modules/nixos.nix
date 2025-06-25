@@ -140,7 +140,13 @@ in
       description = "Whether to make sopswarden-sync command available system-wide";
     };
 
-
+    # Internal options for runtime substitution
+    internal.placeholders = mkOption {
+      type = types.attrsOf types.str;
+      default = {};
+      internal = true;
+      description = "Internal mapping of sentinels to secret file paths for runtime substitution";
+    };
   };
 
   config = mkIf cfg.enable (mkMerge [
@@ -175,7 +181,7 @@ in
       _module.args = { 
         secrets = secretAccessors;
         sopswardenSecrets = secretAccessors; # Alternative name
-        sopswarden = import ../lib/secret.nix { inherit lib config; };
+        sopswarden = import ../lib/secret.nix { inherit lib; };
       };
     }
 
@@ -185,6 +191,21 @@ in
       sops.secrets = sopsSecrets;
       # Disable validation since we manage files externally via systemd services
       sops.validateSopsFiles = false;
+
+      # Collect sentinel-to-path mappings for runtime substitution
+      services.sopswarden.internal.placeholders = 
+        let
+          sopswardenHelpers = import ../lib/secret.nix { inherit lib; };
+        in
+        lib.mkMerge (
+          map (secretPath: 
+            let 
+              secretName = builtins.baseNameOf secretPath;
+              sentinel = sopswardenHelpers.mkSentinel secretName;
+            in 
+            { ${sentinel} = secretPath; }
+          ) (builtins.attrValues secretAccessors)
+        );
     })
 
     # Runtime secret synchronization and validation
@@ -295,7 +316,45 @@ in
         after = [ "sopswarden-sync.service" ];
         wantedBy = [ "default.target" ];
       };
+
+      # Runtime substitution hook for NixOS system files
+      system.activationScripts.sopswarden-rewrite = lib.stringAfter [ "specialfs" ] ''
+        echo "🔄 Sopswarden: substituting secret sentinels in system files..."
+        ${lib.concatStringsSep "\n" (lib.mapAttrsToList (sentinel: secretPath: ''
+          if [[ -f "${secretPath}" ]]; then
+            secret_content=$(cat "${secretPath}")
+            # Replace sentinels in /etc files generated this activation
+            find /etc -type f -name "*.conf" -o -name "*.cfg" -o -name "*.config" -o -name "*config*" 2>/dev/null | while read -r f; do
+              if [[ -f "$f" ]] && grep -q "${sentinel}" "$f" 2>/dev/null; then
+                echo "  📝 Substituting ${sentinel} in $f"
+                sed -i 's|${sentinel}|'"$secret_content"'|g' "$f"
+              fi
+            done
+          fi
+        '') cfg.internal.placeholders)}
+        echo "✅ Sopswarden: secret substitution complete"
+      '';
     })
+
+    # Runtime substitution for Home Manager (when available, users need to set this up separately)
+    # This is just documentation - users should add this to their home-manager configuration:
+    # home.activation.sopswarden-rewrite = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    #   echo "🔄 Sopswarden: substituting secret sentinels in home files..."
+    #   export PATH="${pkgs.gnugrep}/bin:${pkgs.gnused}/bin:${pkgs.findutils}/bin:$PATH"
+    #   for sentinel in __SOPSWARDEN_*__; do
+    #     if [[ -f "/run/secrets/''${sentinel#__SOPSWARDEN_}" ]]; then
+    #       secret_content=$(cat "/run/secrets/''${sentinel#__SOPSWARDEN_}")
+    #       find "$HOME" -type f \( -name "*.conf" -o -name "*.cfg" -o -name "*.config" -o -name "*config*" -o -name ".git*" \) 2>/dev/null | while read -r f; do
+    #         if [[ -f "$f" ]] && grep -q "$sentinel" "$f" 2>/dev/null; then
+    #           echo "  📝 Substituting $sentinel in $f"
+    #           sed -i "s|$sentinel|$secret_content|g" "$f"
+    #         fi
+    #       done
+    #     fi
+    #   done
+    #   echo "✅ Sopswarden: home secret substitution complete"
+    # '';
+    {}
 
     # Package installation
     (mkIf cfg.installPackages {
