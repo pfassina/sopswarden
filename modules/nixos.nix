@@ -181,6 +181,9 @@ in
           SOPS_FILE = cfg.sopsFile;
           SOPS_CONFIG_FILE = cfg.sopsConfigFile;
           AGE_KEY_FILE = cfg.ageKeyFile;
+          HOME = config.users.users.${cfg.defaultOwner}.home;
+          XDG_CONFIG_HOME = "${config.users.users.${cfg.defaultOwner}.home}/.config";
+          XDG_DATA_HOME = "${config.users.users.${cfg.defaultOwner}.home}/.local/share";
         };
         serviceConfig = {
           Type = "oneshot";
