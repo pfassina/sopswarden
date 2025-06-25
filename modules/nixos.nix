@@ -147,6 +147,22 @@ in
   config = mkIf cfg.enable (mkMerge [
     # Always configure age and export secret accessors
     {
+      # Note: Assertions with pathExists are commented out to allow pure evaluation
+      # The boot service will guide users if files are missing at runtime
+      # assertions = [
+      #   {
+      #     assertion = cfg.secrets == {} || builtins.pathExists absoluteSopsFile;
+      #     message = ''
+      #       sopswarden: secrets file is missing at ${absoluteSopsFile}
+      #       
+      #       To generate the encrypted secrets file:
+      #       1. Unlock Bitwarden: rbw unlock
+      #       2. Run bootstrap: nix run .#sopswarden-bootstrap
+      #       3. Commit the file: git add ${absoluteSopsFile}
+      #     '';
+      #   }
+      # ];
+
       sops = {
         defaultSopsFormat = "yaml";
         
@@ -180,6 +196,54 @@ in
 
       # Allow user service to run without login session
       users.users.${cfg.defaultOwner}.linger = true;
+
+      # Boot-time system service for updating secrets when needed
+      systemd.services.sopswarden-sync-boot = {
+        description = "Sopswarden: update secrets from Bitwarden if vault is unlocked";
+        after = [ "network-online.target" ];
+        before = [ "sops-nix.service" ];
+        wants = [ "network-online.target" ];
+        wantedBy = [ "sops-nix.service" ];
+        path = with pkgs; [ cfg.rbwPackage sops age ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.defaultOwner;
+          Group = cfg.defaultGroup;
+          # Minimal environment - rbw never looks for agent socket
+          Environment = [
+            "HOME=${config.users.users.${cfg.defaultOwner}.home}"
+            "XDG_CONFIG_HOME=${config.users.users.${cfg.defaultOwner}.home}/.config"
+            "XDG_DATA_HOME=${config.users.users.${cfg.defaultOwner}.home}/.local/share"
+            "XDG_RUNTIME_DIR=/tmp"
+            "SOPS_FILE=${cfg.sopsFile}"
+            "SOPS_CONFIG_FILE=${cfg.sopsConfigFile}"
+            "AGE_KEY_FILE=${cfg.ageKeyFile}"
+          ];
+        };
+        script = ''
+          # Check if secrets file exists
+          if [[ ! -f "${cfg.sopsFile}" ]]; then
+            echo "❌ Secrets file missing: ${cfg.sopsFile}"
+            echo ""
+            echo "To generate the encrypted secrets file:"
+            echo "  1. Unlock Bitwarden: rbw unlock"
+            echo "  2. Run bootstrap: nix run .#sopswarden-bootstrap"
+            echo "  3. Commit the file: git add ${cfg.sopsFile}"
+            echo ""
+            echo "Continuing without secrets sync (SOPS will fail if this is the first run)"
+            exit 0
+          fi
+          
+          # Check if rbw is already unlocked (from user session)
+          if ${cfg.rbwPackage}/bin/rbw status --quiet 2>/dev/null; then
+            echo "🔄 rbw is unlocked, updating secrets from Bitwarden..."
+            ${syncScript}/bin/sopswarden-sync
+          else
+            echo "🔒 rbw is locked, skipping sync (will use existing encrypted file)"
+            echo "💡 Unlock rbw and run 'systemctl --user start sopswarden-sync' to update"
+          fi
+        '';
+      };
 
       # User service to sync secrets from Bitwarden after user login
       systemd.user.services.sopswarden-sync = {

@@ -59,6 +59,17 @@
         packages = {
           default = self.packages.${system}.sopswarden-sync;
           sopswarden-sync = lib.mkSyncScript { inherit pkgs; };
+          sopswarden-bootstrap = pkgs.writeShellApplication {
+            name = "sopswarden-bootstrap";
+            runtimeInputs = with pkgs; [ rbw sops age jq nix ];
+            text = builtins.readFile ./scripts/bootstrap.sh;
+          };
+        };
+
+        # Apps for nix run  
+        apps.sopswarden-bootstrap = {
+          type = "app";
+          program = "${self.packages.${system}.sopswarden-bootstrap}/bin/sopswarden-bootstrap";
         };
 
         # Checks for CI
