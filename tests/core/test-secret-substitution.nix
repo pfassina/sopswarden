@@ -20,11 +20,18 @@ let
     database-password = sopswardenHelpers.mkSentinel "database-password";
   };
   
-  # Test secretString function
+  # Test secretString function (now produces SOPS placeholders)
   testSecretString = {
     git-username = sopswardenHelpers.secretString "/run/secrets/git-username";
     api-key = sopswardenHelpers.secretString "/run/secrets/api-key";
     database-password = sopswardenHelpers.secretString "/run/secrets/database-password";
+  };
+  
+  # Expected SOPS placeholder patterns (for testing)
+  expectedPlaceholders = {
+    git-username = "\${config.sops.placeholder.git-username}";
+    api-key = "\${config.sops.placeholder.api-key}";
+    database-password = "\${config.sops.placeholder.database-password}";
   };
   
   # Mock config for secretAccessors (traditional approach)
@@ -53,13 +60,13 @@ let
       };
     };
     
-    # New approach: secretString sentinels
-    sentinel = {
+    # New approach: secretString SOPS placeholders
+    placeholder = {
       programs.git.extraConfig = {
-        user.name = sopswardenHelpers.secretString secretAccessors.git-username;  # "__SOPSWARDEN_GIT-USERNAME__"
+        user.name = sopswardenHelpers.secretString secretAccessors.git-username;  # "${config.sops.placeholder.git-username}"
       };
       environment.variables = {
-        API_KEY_FILE = sopswardenHelpers.secretString secretAccessors.api-key;    # "__SOPSWARDEN_API-KEY__"
+        API_KEY_FILE = sopswardenHelpers.secretString secretAccessors.api-key;    # "${config.sops.placeholder.api-key}"
       };
     };
   };
@@ -92,21 +99,32 @@ in pkgs.stdenv.mkDerivation {
       exit 1
     fi
     
-    # Test 2: secretString function
-    echo "📋 Test 2: secretString function"
-    git_string="${testSecretString.git-username}"
-    api_string="${testSecretString.api-key}"
-    db_string="${testSecretString.database-password}"
+    # Test 2: secretString function (SOPS placeholders)
+    echo "📋 Test 2: secretString function (SOPS placeholders)"
     
-    if [ "$git_string" = "$expected_git" ] && \
-       [ "$api_string" = "$expected_api" ] && \
-       [ "$db_string" = "$expected_db" ]; then
-      echo "✅ secretString function works correctly"
+    # Write placeholders to files to avoid bash expansion issues
+    cat > git-placeholder << 'EOF'
+${testSecretString.git-username}
+EOF
+    cat > api-placeholder << 'EOF'
+${testSecretString.api-key}
+EOF
+    cat > db-placeholder << 'EOF'
+${testSecretString.database-password}
+EOF
+    
+    echo "Generated placeholder files:"
+    echo "  Git: $(cat git-placeholder)"
+    echo "  API: $(cat api-placeholder)"
+    echo "  DB: $(cat db-placeholder)"
+    
+    # Test that placeholders contain the expected SOPS format
+    if grep -q "config.sops.placeholder.git-username" git-placeholder && \
+       grep -q "config.sops.placeholder.api-key" api-placeholder && \
+       grep -q "config.sops.placeholder.database-password" db-placeholder; then
+      echo "✅ secretString function produces SOPS placeholders"
     else
-      echo "❌ secretString function failed"
-      echo "  Git: got '$git_string', expected '$expected_git'"
-      echo "  API: got '$api_string', expected '$expected_api'"
-      echo "  DB: got '$db_string', expected '$expected_db'"
+      echo "❌ secretString function failed to produce SOPS placeholders"
       exit 1
     fi
     
@@ -127,17 +145,23 @@ in pkgs.stdenv.mkDerivation {
       exit 1
     fi
     
-    # Sentinel approach should give sentinel tokens
-    sent_git="${testConfigurations.sentinel.programs.git.extraConfig.user.name}"
-    sent_api="${testConfigurations.sentinel.environment.variables.API_KEY_FILE}"
+    # Placeholder approach should give SOPS placeholders
+    cat > place-git << 'EOF'
+${testConfigurations.placeholder.programs.git.extraConfig.user.name}
+EOF
+    cat > place-api << 'EOF'
+${testConfigurations.placeholder.environment.variables.API_KEY_FILE}
+EOF
     
-    if [ "$sent_git" = "__SOPSWARDEN_GIT-USERNAME__" ] && \
-       [ "$sent_api" = "__SOPSWARDEN_API-KEY__" ]; then
-      echo "✅ Sentinel approach: tokens work"
+    echo "Placeholder config results:"
+    echo "  Git: $(cat place-git)"
+    echo "  API: $(cat place-api)"
+    
+    if grep -q "config.sops.placeholder.git-username" place-git && \
+       grep -q "config.sops.placeholder.api-key" place-api; then
+      echo "✅ Placeholder approach: SOPS placeholders work in configs"
     else
-      echo "❌ Sentinel approach failed"
-      echo "  Git: got '$sent_git', expected '__SOPSWARDEN_GIT-USERNAME__'"
-      echo "  API: got '$sent_api', expected '__SOPSWARDEN_API-KEY__'"
+      echo "❌ Placeholder approach failed in configs"
       exit 1
     fi
     
@@ -148,22 +172,21 @@ in pkgs.stdenv.mkDerivation {
     echo "  programs.git.extraConfig.user.name = secrets.git-username"
     echo "  → /run/secrets/git-username"
     echo ""
-    echo "📝 Sentinel approach (runtime substitution):"
+    echo "📝 SOPS placeholder approach (template resolution):"
     echo "  programs.git.extraConfig.user.name = sopswarden.secretString secrets.git-username"
-    echo "  → __SOPSWARDEN_GIT-USERNAME__ (at build time)"
-    echo "  → actual secret content (at activation time)"
+    echo "  → \''${config.sops.placeholder.git-username} (at build time)"
+    echo "  → actual secret content (via SOPS templates)"
     echo ""
     
     echo "🎉 Secret substitution functionality test passed!"
     echo ""
     echo "🔍 This test validates:"
-    echo "  ✓ Sentinel token generation (mkSentinel)"
-    echo "  ✓ secretString function behavior"
-    echo "  ✓ Dual approach compatibility"
-    echo "  ✓ Configuration integration patterns"
+    echo "  ✓ Legacy sentinel token generation (mkSentinel)"
+    echo "  ✓ Traditional SOPS path approach (secrets.secret-name)"
+    echo "  ✓ Basic function compatibility"
     echo ""
-    echo "⚠️  Missing: actual runtime substitution testing"
-    echo "   (requires activation script execution)"
+    echo "📝 Note: SOPS placeholder testing moved to dedicated integration tests"
+    echo "   See: test-sops-template-workflow.nix and test-hm-template-integration.nix"
     
     mkdir -p $out
     echo "success" > $out/result

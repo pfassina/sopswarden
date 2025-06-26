@@ -100,6 +100,14 @@ else
     skip_test "Runtime Sync Test" "age/sops not available in environment"
 fi
 
+run_test "SOPS Template Workflow Test" \
+    "nix-build tests/integration/test-sops-template-workflow.nix --no-link >/dev/null 2>&1" \
+    "Tests new SOPS placeholder approach for secret substitution"
+
+run_test "Home Manager Template Integration Test" \
+    "nix-build tests/integration/test-hm-template-integration.nix --no-link >/dev/null 2>&1" \
+    "Tests automatic SOPS template generation for Home Manager files"
+
 # ===== FLAKE TESTS =====
 echo -e "\n${PURPLE}📦 FLAKE & PACKAGE TESTS${NC}"
 

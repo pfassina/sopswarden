@@ -140,64 +140,85 @@ in pkgs.stdenv.mkDerivation {
       exit 1
     fi
     
-    # Test 2: Sentinel generation for HM configs
-    echo "📋 Test 2: Sentinel generation for Home Manager"
-    git_user_sentinel="${homeManagerConfigs.sentinel.programs.git.extraConfig.user.name}"
-    git_email_sentinel="${homeManagerConfigs.sentinel.programs.git.extraConfig.user.email}"
-    api_var_sentinel="${homeManagerConfigs.sentinel.home.sessionVariables.GITHUB_TOKEN}"
+    # Test 2: SOPS placeholder generation for HM configs
+    echo "📋 Test 2: SOPS placeholder generation for Home Manager"
     
-    if [ "$git_user_sentinel" = "${expectedSentinels.git-username}" ] && \
-       [ "$git_email_sentinel" = "${expectedSentinels.git-email}" ] && \
-       [ "$api_var_sentinel" = "${expectedSentinels.api-token}" ]; then
-      echo "✅ Sentinel approach works in HM configs"
+    # Write placeholder results to files to avoid bash expansion
+    cat > git-user-placeholder << 'EOF'
+${homeManagerConfigs.sentinel.programs.git.extraConfig.user.name}
+EOF
+    cat > git-email-placeholder << 'EOF'
+${homeManagerConfigs.sentinel.programs.git.extraConfig.user.email}
+EOF
+    cat > api-var-placeholder << 'EOF'
+${homeManagerConfigs.sentinel.home.sessionVariables.GITHUB_TOKEN}
+EOF
+    
+    echo "Generated HM placeholder values:"
+    echo "  Git user: $(cat git-user-placeholder)"
+    echo "  Git email: $(cat git-email-placeholder)"
+    echo "  API var: $(cat api-var-placeholder)"
+    
+    if grep -q "config.sops.placeholder.git-username" git-user-placeholder && \
+       grep -q "config.sops.placeholder.git-email" git-email-placeholder && \
+       grep -q "config.sops.placeholder.api-token" api-var-placeholder; then
+      echo "✅ SOPS placeholder approach works in HM configs"
     else
-      echo "❌ Sentinel generation failed in HM"
-      echo "  Git user: got '$git_user_sentinel', expected '${expectedSentinels.git-username}'"
-      echo "  Git email: got '$git_email_sentinel', expected '${expectedSentinels.git-email}'"
-      echo "  API var: got '$api_var_sentinel', expected '${expectedSentinels.api-token}'"
+      echo "❌ SOPS placeholder generation failed in HM"
       exit 1
     fi
     
-    # Test 3: File content substitution
-    echo "📋 Test 3: File content with sentinels"
-    netrc_content="${homeManagerConfigs.sentinel.home.file.".netrc".text}"
-    expected_line="password ${expectedSentinels.api-token}"
+    # Test 3: File content with SOPS placeholders
+    echo "📋 Test 3: File content with SOPS placeholders"
     
-    if echo "$netrc_content" | grep -q "$expected_line"; then
-      echo "✅ File content substitution works"
+    cat > netrc-content << 'EOF'
+${homeManagerConfigs.sentinel.home.file.".netrc".text}
+EOF
+    
+    echo "Generated .netrc content:"
+    cat netrc-content
+    
+    if grep -q "config.sops.placeholder.api-token" netrc-content; then
+      echo "✅ File content contains SOPS placeholders"
     else
-      echo "❌ File content substitution failed"
-      echo "  Content: $netrc_content"
-      echo "  Expected to contain: $expected_line"
+      echo "❌ File content missing SOPS placeholders"
       exit 1
     fi
     
-    # Test 4: SSH config substitution
-    echo "📋 Test 4: SSH config with sentinels"
-    ssh_config="${homeManagerConfigs.sentinel.programs.ssh.extraConfig}"
-    expected_identity="IdentityFile ${expectedSentinels.ssh-key}"
+    # Test 4: SSH config with SOPS placeholders
+    echo "📋 Test 4: SSH config with SOPS placeholders"
     
-    if echo "$ssh_config" | grep -q "$expected_identity"; then
-      echo "✅ SSH config substitution works"
+    cat > ssh-config << 'EOF'
+${homeManagerConfigs.sentinel.programs.ssh.extraConfig}
+EOF
+    
+    echo "Generated SSH config:"
+    cat ssh-config
+    
+    if grep -q "config.sops.placeholder.ssh-key" ssh-config; then
+      echo "✅ SSH config contains SOPS placeholders"
     else
-      echo "❌ SSH config substitution failed"
-      echo "  Config: $ssh_config"
-      echo "  Expected to contain: $expected_identity"
+      echo "❌ SSH config missing SOPS placeholders"
       exit 1
     fi
     
     # Test 5: Mixed approach validation
-    echo "📋 Test 5: Mixed approach (sentinels + paths)"
-    mixed_git_user="${homeManagerConfigs.mixed.programs.git.extraConfig.user.name}"
+    echo "📋 Test 5: Mixed approach (placeholders + paths)"
+    
+    cat > mixed-git-user << 'EOF'
+${homeManagerConfigs.mixed.programs.git.extraConfig.user.name}
+EOF
     mixed_env_file="${homeManagerConfigs.mixed.systemd.user.services.backup.Service.EnvironmentFile}"
     
-    if [ "$mixed_git_user" = "${expectedSentinels.git-username}" ] && \
+    echo "Mixed approach results:"
+    echo "  Git user: $(cat mixed-git-user)"
+    echo "  Env file: $mixed_env_file"
+    
+    if grep -q "config.sops.placeholder.git-username" mixed-git-user && \
        [ "$mixed_env_file" = "/run/secrets/api-token" ]; then
-      echo "✅ Mixed approach works (sentinels for values, paths for files)"
+      echo "✅ Mixed approach works (placeholders for values, paths for files)"
     else
       echo "❌ Mixed approach failed"
-      echo "  Git user: got '$mixed_git_user', expected '${expectedSentinels.git-username}'"
-      echo "  Env file: got '$mixed_env_file', expected '/run/secrets/api-token'"
       exit 1
     fi
     
@@ -212,8 +233,9 @@ in pkgs.stdenv.mkDerivation {
     echo "  ✓ systemd.user.services with environment files"
     echo "  ✓ Mixed approach: sentinels for values, paths for files"
     echo ""
-    echo "🔍 Key insight: Sentinel approach enables Home Manager configs that"
+    echo "🔍 Key insight: SOPS placeholder approach enables Home Manager configs that"
     echo "   were impossible with file-only approach (git config, env vars, etc.)"
+    echo "   Uses native SOPS templates instead of custom rewrite scripts."
     
     mkdir -p $out
     echo "success" > $out/result
