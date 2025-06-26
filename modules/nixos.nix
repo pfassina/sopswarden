@@ -46,6 +46,7 @@ in
   imports = [
     sops-nix.nixosModules.sops
     ./shared.nix
+    ./nixos-hm-templates.nix
   ];
 
   options.services.sopswarden = {
@@ -195,8 +196,7 @@ in
       sops.validateSopsFiles = false;
     })
 
-    # Note: Home Manager SOPS template integration will be handled via activation scripts
-    # since accessing Home Manager options from NixOS context causes evaluation issues
+    # Note: Home Manager SOPS template integration handled by ./nixos-hm-templates.nix
 
     # Runtime secret synchronization and validation
     (mkIf (cfg.secrets != {}) {
