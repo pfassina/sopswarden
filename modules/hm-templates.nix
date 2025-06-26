@@ -50,6 +50,7 @@ in {
     ./shared.nix
   ];
 
+
   # Export templates for the NixOS SOPS module to process
   sopswarden.hmTemplates = filesWithPlaceholdersInfo;
 
@@ -80,10 +81,16 @@ EOF
           if [[ -f "$secret_file" ]]; then
             secret_name=$(basename "$secret_file")
             secret_value=$(cat "$secret_file")
-            template_var="{{ .${builtins.replaceStrings ["-"] ["_"] "SECRET_PLACEHOLDER"} }}"
+            # Convert secret name from git-username to git_username for template matching
+            template_name=''${secret_name//-/_}
+            
+            echo "    🔍 Checking secret: $secret_name -> template var: {{ .$template_name }}"
             
             # Replace the template variable for this secret
-            sed -i "s|{{ \.''${secret_name//-/_} }}|$secret_value|g" "$temp_template"
+            if grep -q "{{ \.$template_name }}" "$temp_template"; then
+              echo "    ✓ Substituting {{ .$template_name }} with secret value"
+              sed -i "s|{{ \.$template_name }}|$secret_value|g" "$temp_template"
+            fi
           fi
         done
         
@@ -104,5 +111,5 @@ EOF
 
   # Provide informative warnings
   warnings = lib.optional (filesWithPlaceholdersInfo != {}) 
-    "sopswarden: Detected ${toString (builtins.length (builtins.attrNames filesWithPlaceholdersInfo))} Home Manager files with SOPS placeholders: ${lib.concatStringsSep ", " (builtins.attrNames filesWithPlaceholdersInfo)}. Templates will be rendered directly by SOPS.";
+    "sopswarden: Detected ${toString (builtins.length (builtins.attrNames filesWithPlaceholdersInfo))} Home Manager files with SOPS placeholders: ${lib.concatStringsSep ", " (builtins.attrNames filesWithPlaceholdersInfo)}. Templates will be processed during Home Manager activation.";
 }
