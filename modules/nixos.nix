@@ -45,6 +45,7 @@ in
 {
   imports = [
     sops-nix.nixosModules.sops
+    ./shared.nix
   ];
 
   options.services.sopswarden = {
@@ -195,8 +196,14 @@ in
     })
 
     # Home Manager SOPS templates integration
-    (mkIf (cfg.secrets != {} && cfg.enableHmIntegration && (config._module.args ? sopswarden-hm-templates)) {
-      sops.templates = config._module.args.sopswarden-hm-templates;
+    (mkIf (cfg.secrets != {} && cfg.enableHmIntegration && (config.sopswarden.hmTemplates != {})) {
+      sops.templates = lib.mapAttrs'
+        (fileName: tmpl: lib.nameValuePair "hm-${builtins.replaceStrings ["/"] ["-"] fileName}" {
+          inherit (tmpl) content owner group mode;
+          # Install template directly to the user's home directory
+          path = "${config.users.users.${cfg.defaultOwner}.home}/${fileName}";
+        })
+        config.sopswarden.hmTemplates;
     })
 
     # Runtime secret synchronization and validation
