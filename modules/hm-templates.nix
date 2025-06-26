@@ -53,8 +53,54 @@ in {
   # Export templates for the NixOS SOPS module to process
   sopswarden.hmTemplates = filesWithPlaceholdersInfo;
 
-  # Note: We don't modify home.file here to avoid circular dependencies.
-  # Instead, we rely on SOPS templates taking precedence by writing directly to the final paths.
+  # Use Home Manager activation to replace placeholder files with processed templates
+  home.activation.sopswarden-template-processing = lib.hm.dag.entryAfter ["writeBoundary"] ''
+    echo "🔄 Sopswarden: processing Home Manager SOPS templates..."
+    
+    ${lib.concatStringsSep "\n" (lib.mapAttrsToList
+      (fileName: info: ''
+        target_path="${config.home.homeDirectory}/${fileName}"
+        
+        echo "  📝 Processing ${fileName}"
+        
+        # Remove Home Manager symlink if it exists
+        if [[ -L "$target_path" ]]; then
+          echo "    🗑️  Removing Home Manager symlink"
+          rm -f "$target_path"
+        fi
+        
+        # Create a temporary template file with Go template content
+        temp_template=$(mktemp)
+        cat > "$temp_template" << 'EOF'
+${info.content}
+EOF
+        
+        # Find all available secrets and substitute them
+        for secret_file in /run/secrets/*; do
+          if [[ -f "$secret_file" ]]; then
+            secret_name=$(basename "$secret_file")
+            secret_value=$(cat "$secret_file")
+            template_var="{{ .${builtins.replaceStrings ["-"] ["_"] "SECRET_PLACEHOLDER"} }}"
+            
+            # Replace the template variable for this secret
+            sed -i "s|{{ \.''${secret_name//-/_} }}|$secret_value|g" "$temp_template"
+          fi
+        done
+        
+        # Install the processed template
+        mkdir -p "$(dirname "$target_path")"
+        cp "$temp_template" "$target_path"
+        chmod ${info.mode} "$target_path"
+        chown ${info.owner}:${info.group} "$target_path" 2>/dev/null || true
+        rm -f "$temp_template"
+        
+        echo "    ✓ Installed processed template to ${fileName}"
+      '')
+      filesWithPlaceholdersInfo
+    )}
+    
+    echo "✅ Sopswarden: Home Manager template processing complete"
+  '';
 
   # Provide informative warnings
   warnings = lib.optional (filesWithPlaceholdersInfo != {}) 
