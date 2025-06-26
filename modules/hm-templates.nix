@@ -9,17 +9,8 @@ let
     builtins.isString text && 
     (lib.hasInfix "\${config.sops.placeholder." text);
 
-  # Helper to convert SOPS placeholders to Go template format
-  convertToGoTemplate = text:
-    # Convert ${config.sops.placeholder.secret-name} to {{ .secret_name }}
-    let
-      # First replace hyphens with underscores in secret names
-      step1 = builtins.replaceStrings ["-"] ["_"] text;
-      # Then replace the placeholder format
-      step2 = builtins.replaceStrings ["\${config.sops.placeholder."] ["{{ ."] step1;
-      # Finally close the template syntax
-      step3 = builtins.replaceStrings ["}"] [" }}"] step2;
-    in step3;
+  # Keep SOPS placeholder format as-is (sops-nix handles substitution directly)
+  keepSopsPlaceholders = text: text;
 
   # Collect files with SOPS placeholders from home.file
   homeFiles = config.home.file or {};
@@ -34,7 +25,7 @@ let
         if hasPlaceholders then
           acc // {
             ${fileName} = {
-              content = convertToGoTemplate fileConfig.text;
+              content = keepSopsPlaceholders fileConfig.text;
               owner = config.home.username;
               group = "users";
               mode = "0600";
@@ -50,14 +41,17 @@ in {
     ./shared.nix
   ];
 
-
   # Export templates for the NixOS SOPS module to process
   sopswarden.hmTemplates = filesWithPlaceholdersInfo;
+
+  # Automatically disable Home Manager files that contain SOPS placeholders
+  # This prevents conflicts between HM symlinks and SOPS-generated files
+  home.disableFiles = builtins.attrNames filesWithPlaceholdersInfo;
 
   # Note: Template processing now handled by NixOS module as root
   # Files will be written directly to final locations by SOPS
 
   # Provide informative warnings
   warnings = lib.optional (filesWithPlaceholdersInfo != {}) 
-    "sopswarden: Detected ${toString (builtins.length (builtins.attrNames filesWithPlaceholdersInfo))} Home Manager files with SOPS placeholders: ${lib.concatStringsSep ", " (builtins.attrNames filesWithPlaceholdersInfo)}. Templates will be processed by SOPS during system activation.";
+    "sopswarden: Detected ${toString (builtins.length (builtins.attrNames filesWithPlaceholdersInfo))} Home Manager files with SOPS placeholders: ${lib.concatStringsSep ", " (builtins.attrNames filesWithPlaceholdersInfo)}. Templates will be processed by SOPS during system activation. Home Manager symlinks disabled automatically.";
 }

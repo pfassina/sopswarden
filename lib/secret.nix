@@ -7,9 +7,8 @@ rec {
 
   # 2. string option → emit SOPS placeholder for template resolution
   secretString = secretPath: 
-    # Emit a SOPS placeholder that will be resolved by sops.templates
-    # Use string concatenation to avoid bash variable expansion issues
-    "$" + "{config.sops.placeholder.${builtins.baseNameOf secretPath}}";
+    # Return the literal placeholder string that sops-nix will replace at activation
+    "\${config.sops.placeholder.${builtins.baseNameOf secretPath}}";
 
   # 3. escape hatch – embeds plain text in the store (discouraged)
   secretLiteral = secretPath: builtins.readFile secretPath;
