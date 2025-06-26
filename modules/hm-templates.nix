@@ -9,45 +9,71 @@ let
     builtins.isString text && 
     (lib.hasInfix "\${config.sops.placeholder." text);
 
-  # Get files with SOPS placeholders from home.file
-  filesWithPlaceholders = lib.filterAttrs 
-    (name: fileConfig: 
-      fileConfig ? text && hasSopsPlaceholder fileConfig.text
-    ) 
-    (config.home.file or {});
+  # Use a different approach: collect the information we need during evaluation
+  # but defer all file operations to the activation script
+  homeFiles = config.home.file or {};
+  
+  # Extract files with placeholders without creating circular dependency
+  filesWithPlaceholdersInfo = lib.foldl'
+    (acc: fileName:
+      let
+        fileConfig = homeFiles.${fileName} or {};
+        hasPlaceholders = fileConfig ? text && hasSopsPlaceholder fileConfig.text;
+      in
+        if hasPlaceholders then
+          acc // {
+            ${fileName} = {
+              content = fileConfig.text;
+              templateName = "hm-${builtins.replaceStrings ["/"] ["-"] fileName}";
+            };
+          }
+        else acc
+    )
+    {}
+    (builtins.attrNames homeFiles);
 
-  # Generate SOPS templates for files with placeholders
-  sopsTemplates = lib.mapAttrs'
-    (fileName: fileConfig: {
-      name = "hm-${builtins.replaceStrings ["/"] ["-"] fileName}";
-      value = {
-        content = fileConfig.text;
-        owner = config.home.username;
-        group = "users";
-      };
+  # Generate SOPS templates for the NixOS module
+  sopsTemplates = lib.mapAttrs
+    (fileName: info: {
+      content = info.content;
+      owner = config.home.username;
+      group = "users";
     })
-    filesWithPlaceholders;
+    filesWithPlaceholdersInfo;
 
-  # Generate activation script to link templates to their final locations
-  activationScript = lib.optionalString (filesWithPlaceholders != {}) ''
-    echo "🔗 Sopswarden: linking Home Manager SOPS templates..."
+  # Generate activation script to handle both disabling original files and linking templates
+  activationScript = lib.optionalString (filesWithPlaceholdersInfo != {}) ''
+    echo "🔗 Sopswarden: managing Home Manager SOPS templates..."
+    
+    # Remove original files with placeholders to avoid conflicts
     ${lib.concatStringsSep "\n" (lib.mapAttrsToList
-      (fileName: fileConfig: 
-        let
-          targetPath = "${config.home.homeDirectory}/${fileName}";
-          templateName = "hm-${builtins.replaceStrings ["/"] ["-"] fileName}";
-        in ''
-          if [[ -f "/run/secrets/${templateName}" ]]; then
-            mkdir -p "$(dirname "${targetPath}")"
-            ln -sf "/run/secrets/${templateName}" "${targetPath}"
-            echo "  ✓ ${fileName} -> /run/secrets/${templateName}"
-          else
-            echo "  ⚠️  Template not found: /run/secrets/${templateName}"
-          fi
-        ''
-      )
-      filesWithPlaceholders
+      (fileName: info: ''
+        target_file="${config.home.homeDirectory}/${fileName}"
+        if [[ -f "$target_file" && ! -L "$target_file" ]]; then
+          echo "  🗑️  Removing original file with placeholders: ${fileName}"
+          rm -f "$target_file"
+        fi
+      '')
+      filesWithPlaceholdersInfo
     )}
+    
+    # Link SOPS templates to their final locations
+    ${lib.concatStringsSep "\n" (lib.mapAttrsToList
+      (fileName: info: ''
+        target_path="${config.home.homeDirectory}/${fileName}"
+        template_path="/run/secrets/${info.templateName}"
+        
+        if [[ -f "$template_path" ]]; then
+          mkdir -p "$(dirname "$target_path")"
+          ln -sf "$template_path" "$target_path"
+          echo "  ✓ ${fileName} -> $template_path"
+        else
+          echo "  ⚠️  Template not found: $template_path"
+        fi
+      '')
+      filesWithPlaceholdersInfo
+    )}
+    
     echo "✅ Sopswarden: Home Manager template linking complete"
   '';
 
@@ -55,18 +81,10 @@ in {
   # Export SOPS templates to be used by the NixOS SOPS configuration
   _module.args.sopswarden-hm-templates = sopsTemplates;
 
-  # Disable files with placeholders to avoid conflicts
-  home.file = lib.mapAttrs'
-    (fileName: fileConfig: {
-      name = fileName;
-      value = lib.mkForce { enable = false; };
-    })
-    filesWithPlaceholders;
-
-  # Add activation script to link templates
+  # Add activation script to manage templates (no file modification here)
   home.activation.sopswarden-template-linking = lib.hm.dag.entryAfter ["writeBoundary"] activationScript;
 
   # Provide informative warnings
-  warnings = lib.optional (filesWithPlaceholders != {}) 
-    "sopswarden: Detected ${toString (builtins.length (builtins.attrNames filesWithPlaceholders))} Home Manager files with SOPS placeholders: ${lib.concatStringsSep ", " (builtins.attrNames filesWithPlaceholders)}. Templates will be generated and linked automatically.";
+  warnings = lib.optional (filesWithPlaceholdersInfo != {}) 
+    "sopswarden: Detected ${toString (builtins.length (builtins.attrNames filesWithPlaceholdersInfo))} Home Manager files with SOPS placeholders: ${lib.concatStringsSep ", " (builtins.attrNames filesWithPlaceholdersInfo)}. Templates will be generated and linked automatically.";
 }
