@@ -204,6 +204,29 @@ in
           path = "${config.users.users.${cfg.defaultOwner}.home}/${fileName}";
         })
         config.sopswarden.hmTemplates;
+
+      # Add activation script to ensure SOPS templates take precedence over Home Manager files
+      system.activationScripts.sopswarden-hm-templates = lib.stringAfter [ "users" ] ''
+        echo "🔄 Sopswarden: ensuring SOPS templates take precedence over Home Manager files..."
+        ${lib.concatStringsSep "\n" (lib.mapAttrsToList
+          (fileName: tmpl: 
+            let
+              targetPath = "${config.users.users.${cfg.defaultOwner}.home}/${fileName}";
+              templatePath = "/run/secrets/hm-${builtins.replaceStrings ["/"] ["-"] fileName}";
+            in ''
+              if [[ -L "${targetPath}" && -f "${templatePath}" ]]; then
+                echo "  🔗 Replacing Home Manager symlink with SOPS template: ${fileName}"
+                rm -f "${targetPath}"
+                mkdir -p "$(dirname "${targetPath}")"
+                ln -sf "${templatePath}" "${targetPath}"
+                chown ${tmpl.owner}:${tmpl.group} "${targetPath}" || true
+              fi
+            ''
+          )
+          config.sopswarden.hmTemplates
+        )}
+        echo "✅ Sopswarden: Home Manager template precedence complete"
+      '';
     })
 
     # Runtime secret synchronization and validation

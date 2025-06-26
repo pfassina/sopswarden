@@ -53,14 +53,8 @@ in {
   # Export templates for the NixOS SOPS module to process
   sopswarden.hmTemplates = filesWithPlaceholdersInfo;
 
-  # Disable original files that contain placeholders since SOPS will create them directly
-  home.file = lib.mapAttrs
-    (fileName: fileConfig:
-      if fileConfig ? text && hasSopsPlaceholder fileConfig.text
-      then lib.mkForce { enable = false; }
-      else fileConfig
-    )
-    homeFiles;
+  # Note: We don't modify home.file here to avoid circular dependencies.
+  # Instead, we rely on SOPS templates taking precedence by writing directly to the final paths.
 
   # Provide informative warnings
   warnings = lib.optional (filesWithPlaceholdersInfo != {}) 
