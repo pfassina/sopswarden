@@ -41,17 +41,20 @@ in {
     ./shared.nix
   ];
 
-  # Export templates for the NixOS SOPS module to process
-  sopswarden.hmTemplates = filesWithPlaceholdersInfo;
+  config = {
+    # Export templates for the NixOS SOPS module to process
+    sopswarden.hmTemplates = filesWithPlaceholdersInfo;
 
-  # Automatically disable Home Manager files that contain SOPS placeholders
-  # This prevents conflicts between HM symlinks and SOPS-generated files
-  home.disableFiles = builtins.attrNames filesWithPlaceholdersInfo;
+    # Automatically disable Home Manager files that contain SOPS placeholders
+    # This prevents conflicts between HM symlinks and SOPS-generated files
+    # Using mkForce null for compatibility with all Home Manager versions
+    home.file = lib.mapAttrs (_: _: lib.mkForce null) filesWithPlaceholdersInfo;
+
+    # Provide informative warnings
+    warnings = lib.optional (filesWithPlaceholdersInfo != {}) 
+      "sopswarden: Detected ${toString (builtins.length (builtins.attrNames filesWithPlaceholdersInfo))} Home Manager files with SOPS placeholders: ${lib.concatStringsSep ", " (builtins.attrNames filesWithPlaceholdersInfo)}. Templates will be processed by SOPS during system activation. Home Manager symlinks disabled automatically via mkForce null.";
+  };
 
   # Note: Template processing now handled by NixOS module as root
   # Files will be written directly to final locations by SOPS
-
-  # Provide informative warnings
-  warnings = lib.optional (filesWithPlaceholdersInfo != {}) 
-    "sopswarden: Detected ${toString (builtins.length (builtins.attrNames filesWithPlaceholdersInfo))} Home Manager files with SOPS placeholders: ${lib.concatStringsSep ", " (builtins.attrNames filesWithPlaceholdersInfo)}. Templates will be processed by SOPS during system activation. Home Manager symlinks disabled automatically.";
 }
