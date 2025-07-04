@@ -61,11 +61,6 @@
         packages = {
           default = self.packages.${system}.sopswarden-sync;
           sopswarden-sync = lib.mkSyncScript { inherit pkgs; };
-          sopswarden-bootstrap = pkgs.writeShellApplication {
-            name = "sopswarden-bootstrap";
-            runtimeInputs = with pkgs; [ rbw sops age jq nix ];
-            text = builtins.readFile ./scripts/bootstrap.sh;
-          };
         };
 
         # Apps for nix run  
