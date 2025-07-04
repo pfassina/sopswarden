@@ -10,19 +10,19 @@ let
     let
       # Test with non-existent files (should handle gracefully)
       hashTrackerNonExistent = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = "/nonexistent/secrets.nix";
+        secrets = { test-secret = "Test Item"; };
         hashFile = "/nonexistent/hash";
       });
 
       # Test with default parameters
       hashTrackerDefault = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = "./secrets.nix";
+        secrets = { test-secret = "Test Item"; };
         hashFile = "./secrets.hash";
       });
 
       # Test with custom parameters
       hashTrackerCustom = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = "/etc/nixos/secrets.nix";
+        secrets = { test-secret = "Test Item"; };
         hashFile = "/etc/nixos/secrets.hash";
       });
     in
@@ -72,7 +72,6 @@ let
           enableChangeDetection = true;
 
           # Custom paths for testing
-          secretsFile = "/etc/nixos/secrets.nix";
           hashFile = "/etc/nixos/secrets.hash";
           sopsFile = "/etc/nixos/secrets.yaml";
         };
@@ -128,7 +127,7 @@ let
       # Generate sync script with change detection enabled
       syncScriptWithCD = flake.lib.mkSyncScript {
         inherit pkgs;
-        secretsFile = "/etc/nixos/secrets.nix";
+        secrets = { test-secret = "Test Item"; };
         sopsFile = "/etc/nixos/secrets.yaml";
         ageKeyFile = "/root/.config/sops/age/keys.txt";
         forceSync = false; # Should use change detection
@@ -138,7 +137,7 @@ let
       # Generate sync script with force sync (bypasses change detection)
       syncScriptForced = flake.lib.mkSyncScript {
         inherit pkgs;
-        secretsFile = "/etc/nixos/secrets.nix";
+        secrets = { test-secret = "Test Item"; };
         sopsFile = "/etc/nixos/secrets.yaml";
         ageKeyFile = "/root/.config/sops/age/keys.txt";
         forceSync = true; # Should bypass change detection
@@ -164,17 +163,17 @@ let
     let
       # Test that hash tracker can be called with different file states
       newInstallResult = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = "/new/secrets.nix";
+        secrets = { test-secret = "Test Item"; };
         hashFile = "/new/secrets.hash";
       });
 
       missingHashResult = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = "/etc/nixos/secrets.nix";
+        secrets = { test-secret = "Test Item"; };
         hashFile = "/missing/secrets.hash";
       });
 
       normalResult = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = "/etc/nixos/secrets.nix";
+        secrets = { test-secret = "Test Item"; };
         hashFile = "/etc/nixos/secrets.hash";
       });
     in
@@ -202,7 +201,6 @@ let
             monitored-secret = "Monitored Item";
           };
           enableChangeDetection = true;
-          secretsFile = "/etc/nixos/secrets.nix";
           hashFile = "/etc/nixos/secrets.hash";
         };
       };

@@ -36,9 +36,7 @@ let
         };
       };
 
-      # Use default settings for first install
-      secretsFile = "/etc/nixos/secrets.nix";
-      sopsFile = "/etc/nixos/secrets.yaml";
+      # Use default settings for first install - files will be in /var/lib/sopswarden/
       ageKeyFile = "/root/.config/sops/age/keys.txt";
     };
 

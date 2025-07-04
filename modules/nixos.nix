@@ -9,7 +9,7 @@ let
 
   # Create the sync script with user configuration
   syncScript = sopswardenLib.mkSyncScript {
-    inherit (cfg) secretsFile sopsFile ageKeyFile sopsConfigFile workingDirectory;
+    inherit (cfg) secrets sopsFile ageKeyFile sopsConfigFile workingDirectory;
     inherit pkgs;
     inherit (cfg) rbwCommand;
   };
@@ -27,7 +27,7 @@ let
 
   # Hash tracking for change detection (IMPURE)
   hashTracker = sopswardenLib.mkHashTracker {
-    inherit (cfg) secretsFile hashFile;
+    inherit (cfg) secrets hashFile;
   };
 
 in
@@ -63,15 +63,9 @@ in
     };
 
     # File paths
-    secretsFile = mkOption {
-      type = types.path;
-      default = ./secrets.nix;
-      description = "Path to the secrets.nix file containing secret definitions";
-    };
-
     sopsFile = mkOption {
       type = types.path;
-      default = ./secrets.yaml;
+      default = /var/lib/sopswarden/secrets.yaml;
       description = "Path to the encrypted SOPS file";
     };
 
@@ -83,20 +77,20 @@ in
 
     sopsConfigFile = mkOption {
       type = types.path;
-      default = ./.sops.yaml;
+      default = /var/lib/sopswarden/.sops.yaml;
       description = "Path to the .sops.yaml configuration file";
     };
 
     hashFile = mkOption {
       type = types.str;
-      default = "./.last-sync-hash";
+      default = "/var/lib/sopswarden/.last-sync-hash";
       description = "Path to store the last sync hash for change detection";
     };
 
     workingDirectory = mkOption {
       type = types.nullOr types.str;
-      default = null;
-      description = "Working directory for sync operations. If null, uses directory containing secretsFile";
+      default = "/var/lib/sopswarden";
+      description = "Working directory for sync operations";
     };
 
     # rbw configuration
@@ -155,6 +149,16 @@ in
   config = mkIf cfg.enable (mkMerge [
     # Basic SOPS configuration
     {
+      # Create the sopswarden directory
+      system.activationScripts.sopswarden-setup = {
+        text = ''
+          mkdir -p /var/lib/sopswarden
+          chmod 750 /var/lib/sopswarden
+          chown root:root /var/lib/sopswarden
+        '';
+        deps = [ ];
+      };
+
       sops = {
         defaultSopsFile = cfg.sopsFile;
         defaultSopsFormat = "yaml";

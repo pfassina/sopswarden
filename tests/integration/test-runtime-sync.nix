@@ -11,12 +11,12 @@ let
       # Generate sync script with test configuration
       syncScript = flake.lib.mkSyncScript {
         inherit pkgs;
-        secretsFile = "/etc/nixos/secrets.nix";
-        sopsFile = "/etc/nixos/secrets.yaml";
+        secrets = { test-secret = "Test Item"; api-key = "API Service"; };
+        sopsFile = "/var/lib/sopswarden/secrets.yaml";
         ageKeyFile = "/root/.config/sops/age/keys.txt";
-        sopsConfigFile = "/etc/nixos/.sops.yaml";
+        sopsConfigFile = "/var/lib/sopswarden/.sops.yaml";
         forceSync = false;
-        workingDirectory = "/etc/nixos";
+        workingDirectory = "/var/lib/sopswarden";
       };
     in
     {

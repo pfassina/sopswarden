@@ -10,17 +10,11 @@ This example shows the simplest way to use sopswarden in your NixOS configuratio
    age-keygen -o ~/.config/sops/age/keys.txt
    ```
 
-2. **Create .sops.yaml with your age key:**
+2. **sopswarden will automatically create .sops.yaml:**
    ```bash
-   # Get your public key and create config
-   cat > .sops.yaml << EOF
-   keys:
-     - &main_key $(age-keygen -y ~/.config/sops/age/keys.txt)
-   creation_rules:
-     - path_regex: secrets\.ya?ml$
-       key_groups:
-       - age: [*main_key]
-   EOF
+   # No manual configuration needed!
+   # sopswarden-sync will create .sops.yaml in /var/lib/sopswarden/
+   # when you run it for the first time
    ```
 
 3. **Configure rbw:**
@@ -44,10 +38,9 @@ This example shows the simplest way to use sopswarden in your NixOS configuratio
 5. **Deploy:**
    ```bash
    rbw unlock  # Unlock Bitwarden
-   nixos-rebuild switch --flake .#example
+   sopswarden-sync  # Sync secrets from Bitwarden
+   nixos-rebuild switch --flake .#example --impure
    ```
-   
-   Secrets are automatically synced during system activation!
 
 ## Usage
 
@@ -65,7 +58,15 @@ After setup, your secrets are available in NixOS configuration as `secrets.secre
 ## Workflow
 
 1. **Add new secret to Bitwarden** (web interface or rbw)
-2. **Update your flake.nix** with the new secret definition
-3. **Deploy:** `nixos-rebuild switch --flake .#example`
-
-Secrets are automatically synced during system activation - no manual steps required!
+2. **Update your flake.nix** with the new secret in `services.sopswarden.secrets`:
+   ```nix
+   services.sopswarden.secrets = {
+     # ... existing secrets ...
+     new-secret = "New Bitwarden Item Name";
+   };
+   ```
+3. **Deploy:**
+   ```bash
+   sopswarden-sync  # Sync from Bitwarden
+   nixos-rebuild switch --flake .#example --impure
+   ```

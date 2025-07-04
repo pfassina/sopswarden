@@ -19,12 +19,7 @@
           services.sopswarden = {
             enable = true;
 
-            # Use absolute paths to maintain pure evaluation
-            # The systemd services will handle file creation at runtime
-            sopsFile = "/var/lib/sopswarden/secrets.yaml";
-            sopsConfigFile = "/var/lib/sopswarden/.sops.yaml";
-
-            # Define your secrets
+            # Define your secrets directly in the NixOS configuration
             secrets = {
               # Simple secret (uses password field from login item)
               api-key = "My API Service";

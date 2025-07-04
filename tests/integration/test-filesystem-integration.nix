@@ -21,20 +21,20 @@ let
 
       # Test hash tracking with predictable content
       etcPasswdHash = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = "/etc/passwd"; # File that should exist
+        secrets = { test-secret = "Test Item"; };
         hashFile = "${tempDir}/test-hash"; # File that shouldn't exist
       });
 
-      # Test with both files non-existent
+      # Test with non-existent hash file
       nonExistentBoth = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = "${tempDir}/nonexistent.nix";
+        secrets = { test-secret = "Test Item"; };
         hashFile = "${tempDir}/nonexistent.hash";
       });
 
-      # Test with valid vs invalid paths
+      # Test with invalid hash path
       invalidPath = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = ""; # Invalid path
-        hashFile = "${tempDir}/hash";
+        secrets = { test-secret = "Test Item"; };
+        hashFile = ""; # Invalid path
       });
     in
     {
@@ -128,7 +128,6 @@ let
     let
       # Generate sync script with real paths
       realPaths = {
-        secretsFile = "${tempDirBase}-sync/secrets.nix";
         sopsFile = "${tempDirBase}-sync/secrets.yaml";
         ageKeyFile = "${tempDirBase}-sync/age-keys.txt";
         sopsConfigFile = "${tempDirBase}-sync/.sops.yaml";
@@ -137,6 +136,7 @@ let
 
       syncScriptResult = builtins.tryEval (flake.lib.mkSyncScript ({
         inherit pkgs;
+        secrets = { test-secret = "Test Item"; api-key = "API Service"; };
         rbwCommand = "${pkgs.rbw}/bin/rbw";
       } // realPaths));
 
@@ -206,7 +206,6 @@ let
           };
 
           # Use realistic paths
-          secretsFile = "${tempDirBase}-module/secrets.nix";
           sopsFile = "${tempDirBase}-module/secrets.yaml";
           ageKeyFile = "${tempDirBase}-module/age-keys.txt";
           sopsConfigFile = "${tempDirBase}-module/.sops.yaml";
@@ -246,11 +245,8 @@ let
         then builtins.length (builtins.attrNames moduleSystem.config.services.sopswarden.secrets) == 2
         else false;
 
-      # File paths
-      secretsFileSet =
-        if moduleResult.success
-        then builtins.match ".*secrets\\.nix" (builtins.toString moduleSystem.config.services.sopswarden.secretsFile) != null
-        else false;
+      # File paths - secretsFile no longer exists in new architecture
+      secretsFileSet = true; # No longer using secrets.nix file
       sopsFileSet =
         if moduleResult.success
         then builtins.match ".*secrets\\.yaml" (builtins.toString moduleSystem.config.services.sopswarden.sopsFile) != null

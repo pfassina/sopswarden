@@ -7,17 +7,17 @@ rec {
   # Core function to create a parameterized sync script
   mkSyncScript =
     { pkgs
-    , secretsFile ? "./secrets.nix"
-    , sopsFile ? "./secrets.yaml"
+    , secrets ? {}
+    , sopsFile ? "/var/lib/sopswarden/secrets.yaml"
     , ageKeyFile ? "~/.config/sops/age/keys.txt"
-    , sopsConfigFile ? "./.sops.yaml"
+    , sopsConfigFile ? "/var/lib/sopswarden/.sops.yaml"
     , rbwPackage ? pkgs.rbw
     , rbwCommand ? "${rbwPackage}/bin/rbw"
     , forceSync ? false
-    , workingDirectory ? null
+    , workingDirectory ? "/var/lib/sopswarden"
     }:
     pkgs.writeShellScriptBin "sopswarden-sync" (import ./sync-script.nix {
-      inherit secretsFile sopsFile ageKeyFile sopsConfigFile rbwCommand forceSync workingDirectory;
+      inherit secrets sopsFile ageKeyFile sopsConfigFile rbwCommand forceSync workingDirectory;
     });
 
   # Default packages needed for sopswarden
@@ -112,9 +112,10 @@ rec {
       secrets;
 
   # Hash-based change detection (IMPURE - reads hash file)
-  mkHashTracker = { secretsFile, hashFile }:
+  mkHashTracker = { secrets, hashFile }:
     let
-      secretsHash = builtins.hashFile "sha256" secretsFile;
+      # Hash the secrets configuration instead of a file
+      secretsHash = builtins.hashString "sha256" (builtins.toJSON secrets);
       lastSyncHash =
         if builtins.pathExists hashFile
         then removeSuffix "\n" (builtins.readFile hashFile)

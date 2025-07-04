@@ -63,15 +63,8 @@ sopsWarden eliminates the pain of manual secret management in NixOS by automatic
 mkdir -p ~/.config/sops/age
 age-keygen -o ~/.config/sops/age/keys.txt
 
-# Create .sops.yaml with your public key
-cat > .sops.yaml << EOF
-keys:
-  - &main_key $(age-keygen -y ~/.config/sops/age/keys.txt)
-creation_rules:
-  - path_regex: secrets\.ya?ml$
-    key_groups:
-    - age: [*main_key]
-EOF
+# sopswarden will automatically create .sops.yaml in /var/lib/sopswarden/
+# when you run sopswarden-sync for the first time
 ```
 
 ### 3. Configure rbw
@@ -93,7 +86,7 @@ rbw unlock
 # Run initial sync
 sopswarden-sync
 
-# This creates an encrypted secrets.yaml file
+# This creates encrypted files in /var/lib/sopswarden/
 ```
 
 ### 5. Deploy with --impure
@@ -148,7 +141,7 @@ environment.etc."api-config".text = ''
 
 The impure implementation uses `builtins.readFile` to read decrypted secrets during evaluation:
 
-1. **Sync** - `sopswarden-sync` fetches from Bitwarden and creates encrypted `secrets.yaml`
+1. **Sync** - `sopswarden-sync` fetches from Bitwarden and creates encrypted files in `/var/lib/sopswarden/`
 2. **Deploy** - `nixos-rebuild switch --impure` runs
 3. **Decrypt** - SOPS decrypts secrets to `/run/secrets/*`
 4. **Read** - Configuration reads actual values using `builtins.readFile`
@@ -159,7 +152,7 @@ The impure implementation uses `builtins.readFile` to read decrypted secrets dur
 ### Adding New Secrets
 
 1. **Add to Bitwarden** (web interface or `rbw`)
-2. **Update configuration:**
+2. **Update your NixOS configuration:**
    ```nix
    services.sopswarden.secrets = {
      # ... existing secrets ...
@@ -179,7 +172,7 @@ The impure implementation uses `builtins.readFile` to read decrypted secrets dur
 
 The module will warn you when secrets need syncing:
 ```
-⚠️  sopswarden: secrets file has changed since last sync. Run 'sopswarden-sync' to update encrypted secrets.
+⚠️  sopswarden: secrets configuration has changed since last sync. Run 'sopswarden-sync' to update encrypted secrets.
 ```
 
 ## 🔧 Configuration Options
@@ -188,10 +181,11 @@ The module will warn you when secrets need syncing:
 services.sopswarden = {
   enable = true;
   
-  # File locations
-  secretsFile = ./secrets.nix;          # Your secret definitions
-  sopsFile = ./secrets.yaml;            # Encrypted output
-  ageKeyFile = "~/.config/sops/age/keys.txt";
+  # Define your secrets (recommended approach)
+  secrets = {
+    api-key = "My API Service";
+    db-password = { name = "Database"; user = "admin@example.com"; };
+  };
   
   # rbw configuration  
   rbwCommand = "${pkgs.rbw}/bin/rbw";

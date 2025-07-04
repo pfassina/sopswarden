@@ -1,7 +1,9 @@
-{ secretsFile, sopsFile, ageKeyFile, sopsConfigFile, rbwCommand, forceSync, workingDirectory }:
+{ secrets, sopsFile, ageKeyFile, sopsConfigFile, rbwCommand, forceSync, workingDirectory }:
 
 let
   forceSyncFlag = if forceSync then "true" else "false";
+  # Convert secrets to JSON for the script to read
+  secretsJson = builtins.toJSON secrets;
 in
 ''
   #!/usr/bin/env bash
@@ -10,16 +12,14 @@ in
   set -euo pipefail
 
   # Configuration
-  SECRETS_FILE="${secretsFile}"
   SOPS_FILE="${sopsFile}" 
   AGE_KEY_FILE="${ageKeyFile}"
   SOPS_CONFIG_FILE="${sopsConfigFile}"
   RBW_COMMAND="${rbwCommand}"
   FORCE_SYNC="${forceSyncFlag}"
-  WORKING_DIR="${if workingDirectory != null then workingDirectory else "$(dirname \"$SECRETS_FILE\")"}"
+  WORKING_DIR="${workingDirectory}"
 
   # Expand ~ in paths
-  SECRETS_FILE="''${SECRETS_FILE/#\~/$HOME}"
   SOPS_FILE="''${SOPS_FILE/#\~/$HOME}"
   SOPS_CONFIG_FILE="''${SOPS_CONFIG_FILE/#\~/$HOME}"
   AGE_KEY_FILE="''${AGE_KEY_FILE/#\~/$HOME}"
@@ -27,16 +27,18 @@ in
   # Create parent directories if they don't exist
   mkdir -p "$(dirname "$SOPS_FILE")"
   mkdir -p "$(dirname "$AGE_KEY_FILE")"
+  mkdir -p "$WORKING_DIR"
 
   # Work from the correct directory
   cd "$WORKING_DIR"
 
-  # Check if secrets.nix has changed since last sync
-  SECRETS_HASH=$(sha256sum "$SECRETS_FILE" 2>/dev/null | cut -d' ' -f1 || echo "no-hash")
-  LAST_HASH_FILE="$(dirname "$SECRETS_FILE")/.last-sync-hash"
+  # Check if secrets configuration has changed since last sync
+  SECRETS_CONFIG='${secretsJson}'
+  SECRETS_HASH=$(echo -n "$SECRETS_CONFIG" | sha256sum | cut -d' ' -f1)
+  LAST_HASH_FILE="$WORKING_DIR/.last-sync-hash"
 
   if [ "$FORCE_SYNC" != "true" ] && [ -f "$LAST_HASH_FILE" ] && [ "$(cat "$LAST_HASH_FILE")" = "$SECRETS_HASH" ]; then
-      echo "✅ secrets file unchanged since last sync, skipping..."
+      echo "✅ secrets configuration unchanged since last sync, skipping..."
       echo "💡 Use FORCE_SYNC=true to force a sync anyway"
       exit 0
   fi
@@ -61,10 +63,8 @@ in
 
   echo "🔄 Syncing secrets from Bitwarden..."
 
-  # Read secrets.nix and extract secret definitions using nix
-  secret_keys=$(nix eval --impure --raw --expr "
-    let secrets = (import $SECRETS_FILE).secrets or (import $SECRETS_FILE); 
-    in builtins.concatStringsSep \" \" (builtins.attrNames secrets)")
+  # Extract secret keys from the configuration
+  secret_keys=$(echo "$SECRETS_CONFIG" | jq -r 'keys[]')
 
   # Create temporary unencrypted YAML
   temp_file=$(mktemp)
@@ -73,20 +73,23 @@ in
   for key in $secret_keys; do
       echo "📡 Fetching: $key"
     
-      # Get the secret definition (either string or attrset)
-      secret_def=$(nix eval --impure --raw --expr "
-          let secrets = (import $SECRETS_FILE).secrets or (import $SECRETS_FILE);
-              def = secrets.$key;
-          in if builtins.isString def then 
-              builtins.toJSON { name = def; user = null; type = \"login\"; field = \"password\"; }
-          else 
-              builtins.toJSON (def // { type = def.type or \"login\"; field = def.field or \"password\"; })")
+      # Get the secret definition (either string or object)
+      secret_def=$(echo "$SECRETS_CONFIG" | jq -c ".$key")
     
-      # Parse the JSON to get all fields
-      name=$(echo "$secret_def" | jq -r '.name')
-      user=$(echo "$secret_def" | jq -r '.user // empty')
-      item_type=$(echo "$secret_def" | jq -r '.type // "login"')
-      field=$(echo "$secret_def" | jq -r '.field // "password"')
+      # Parse the definition
+      if echo "$secret_def" | jq -e 'type == "string"' >/dev/null; then
+          # Simple string definition
+          name=$(echo "$secret_def" | jq -r '.')
+          user=""
+          item_type="login"
+          field="password"
+      else
+          # Complex object definition
+          name=$(echo "$secret_def" | jq -r '.name')
+          user=$(echo "$secret_def" | jq -r '.user // empty')
+          item_type=$(echo "$secret_def" | jq -r '.type // "login"')
+          field=$(echo "$secret_def" | jq -r '.field // "password"')
+      fi
     
       # Fetch from bitwarden based on type
       if [ "$item_type" = "note" ]; then
@@ -147,5 +150,5 @@ in
   echo -n "$SECRETS_HASH" > "$LAST_HASH_FILE"
 
   echo "✅ Secrets synced successfully to $SOPS_FILE"
-  echo "📝 Remember to commit the updated secrets file"
+  echo "📝 Remember to commit the updated secrets file if needed"
 ''

@@ -8,27 +8,27 @@ let
   # Test mkHashTracker with various error conditions
   testHashTrackerErrors =
     let
-      # Test with non-existent secrets file
+      # Test with non-existent secrets configuration  
       nonExistentSecretsResult = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = "/nonexistent/secrets.nix";
+        secrets = { test-secret = "test"; };
         hashFile = "/tmp/test-hash";
       });
 
       # Test with non-existent hash file (should be handled gracefully)
       nonExistentHashResult = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = "/etc/passwd"; # File that exists
+        secrets = { test-secret = "test"; };
         hashFile = "/nonexistent/hash";
       });
 
       # Test with permission-denied scenarios (simulated)
       permissionDeniedResult = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = "/root/.ssh/id_rsa"; # Likely permission denied
+        secrets = { test-secret = "test"; };
         hashFile = "/root/restricted-hash";
       });
 
       # Test with invalid paths
       invalidPathResult = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = ""; # Empty string
+        secrets = { test-secret = "test"; };
         hashFile = "/tmp/hash";
       });
     in
@@ -123,7 +123,7 @@ let
       # Test with invalid file paths
       invalidPathsResult = builtins.tryEval (flake.lib.mkSyncScript {
         inherit pkgs;
-        secretsFile = ""; # Empty path
+        secrets = { test-secret = "test"; };
         sopsFile = ""; # Empty path
         ageKeyFile = ""; # Empty path
       });
@@ -137,7 +137,7 @@ let
       # Test with very long paths (edge case)
       longPathsResult = builtins.tryEval (flake.lib.mkSyncScript {
         inherit pkgs;
-        secretsFile = "/very/long/path/that/might/cause/issues/if/not/handled/properly/secrets.nix";
+        secrets = { test-secret = "test"; };
         sopsFile = "/very/long/path/that/might/cause/issues/if/not/handled/properly/secrets.yaml";
       });
     in
@@ -217,9 +217,8 @@ let
           secrets = {
             test-secret = "Test Item";
           };
-          # These settings might conflict
+          # Test settings
           enableChangeDetection = true;
-          secretsFile = "/nonexistent/secrets.nix"; # File doesn't exist
         };
       };
 

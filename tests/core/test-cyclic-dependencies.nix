@@ -76,7 +76,7 @@ let
       # Try to build the sync script package
       syncScriptResult = builtins.tryEval (flake.lib.mkSyncScript {
         inherit pkgs;
-        secretsFile = "/test/secrets.nix";
+        secrets = { test-secret = "test"; };
         sopsFile = "/test/secrets.yaml";
         ageKeyFile = "/test/age/keys.txt";
         sopsConfigFile = "/test/.sops.yaml";
@@ -121,7 +121,7 @@ let
 
       # Test mkHashTracker with non-existent files
       hashTrackerTest = builtins.tryEval (flake.lib.mkHashTracker {
-        secretsFile = "/nonexistent/secrets.nix";
+        secrets = { test-secret = "test"; };
         hashFile = "/nonexistent/hash";
       });
     in
