@@ -8,6 +8,9 @@ This test suite validates all core functionality and user journeys for the sopsw
 - **test-pure-evaluation.nix**: Validates basic flake structure and functions work with impure evaluation
 - **test-lib-functions.nix**: Tests all library functions in isolation with various inputs
 - **test-cyclic-dependencies.nix**: Ensures no circular dependencies during evaluation
+- **test-secret-accessors.nix**: Tests mkSecretAccessors function and secrets.* pattern export
+- **test-sops-integration.nix**: Tests mkSopsSecrets function and SOPS configuration generation
+- **test-change-detection.nix**: Tests hash tracking and file monitoring functionality
 
 ### Workflow Tests (`workflows/`)
 - **test-fresh-install.nix**: Tests complete user journey from fresh installation
@@ -20,6 +23,7 @@ This test suite validates all core functionality and user journeys for the sopsw
 ### Integration Tests (`integration/`)
 - **test-runtime-sync.nix**: Tests sync script generation and application access to secrets
 - **test-rbw-states.nix**: Tests handling of rbw locked/unlocked/unavailable states during build
+- **test-secret-path-resolution.nix**: Tests end-to-end secret path resolution
 
 ## Running Tests
 
@@ -99,7 +103,7 @@ All tests should pass with the current impure implementation. The test runner wi
 
 Expected output:
 ```
-✅ Tests passed: 11/11
+✅ Tests passed: 15/15
 🎉 sopswarden is working correctly
 ```
 
