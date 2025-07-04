@@ -26,7 +26,7 @@ nix-build tests/core/test-pure-evaluation.nix # Core functionality check
 
 **Core test categories:**
 ```bash
-# Core functionality (pure evaluation, library functions)
+# Core functionality (impure evaluation, library functions)
 nix-build tests/core/test-pure-evaluation.nix
 nix-build tests/core/test-lib-functions.nix
 
@@ -70,16 +70,17 @@ deadnix .                                     # Dead code detection
 - `modules/home-manager.nix` - Home Manager module for user-level usage
 
 **Key Functions:**
-- `mkSyncScript` - Generates parameterized sopswarden-sync bash script with embedded secrets
+- `mkSyncScript` - Generates parameterized sopswarden-sync bash script using `nix eval --impure`
 - `mkSopsSecrets` - Creates SOPS secret configuration from user definitions
-- `mkSecretAccessors` - **CRITICAL**: Provides runtime access to decrypted secrets via `secrets.secret-name` syntax
+- `mkSecretAccessors` - **CRITICAL**: Provides access to secrets via `secrets.secret-name` syntax using impure evaluation
+- `mkHashTracker` - Hash-based change detection using impure file reads
 - `normalizeSecretDef` - Normalizes secret definitions to standard format
 
-**Pure Evaluation Architecture (2025-06-22):**
-- **No `--impure` Required**: Never reads files during evaluation 
-- **No Bootstrap Mode**: Runtime validation eliminates circular dependencies
-- **String Paths**: Uses `types.str` to avoid Nix store caching issues
-- **Runtime Validation**: systemd services handle secret sync and validation
+**Impure Evaluation Architecture:**
+- **Uses `--impure` by Design**: Intentionally reads files during evaluation for secret access
+- **Direct File Access**: `builtins.readFile` and `builtins.pathExists` used in `mkSecretAccessors`
+- **Runtime Sync**: sopswarden-sync script handles Bitwarden integration and SOPS encryption
+- **Change Detection**: Hash tracking prevents unnecessary re-encryption
 
 ### Secret Access Pattern (Core Feature)
 
@@ -98,24 +99,26 @@ networking.wireless.networks."MyWiFi".psk = secrets.wifi-password;
 services.api.key = secrets.api-key;
 ```
 
-This is implemented by `mkSecretAccessors` which maps secret names to their SOPS paths and exports them via `_module.args.secrets`.
+This is implemented by `mkSecretAccessors` which attempts to read secret files during evaluation using `builtins.readFile`, falling back to SOPS paths when files don't exist, and exports them via `_module.args.secrets`.
 
-### Runtime Validation Architecture
+### Sync Script Architecture
 
-The pure evaluation architecture uses systemd services for all secret management:
+The impure evaluation architecture uses the sopswarden-sync script for secret management:
 
-1. **sopswarden-sync.service** - Fetches secrets from Bitwarden and encrypts them
-2. **sopswarden-validate.service** - Validates SOPS file after sync  
-3. Both run before `sysinit.target` to ensure secrets are ready before other services
+1. **sopswarden-sync** - Bash script that uses `nix eval --impure` to read secrets configuration
+2. **Bitwarden Integration** - Fetches secrets from Bitwarden using `rbw` CLI
+3. **SOPS Encryption** - Encrypts secrets using SOPS with age keys
+4. **Hash Tracking** - Prevents unnecessary re-encryption using change detection
 
-This eliminates the need for `--impure` flags or bootstrap modes.
+This design requires `--impure` flags but provides direct access to secret values during evaluation.
 
 ### Module Integration
 
 **NixOS Module:** 
 - Accepts secret definitions via `services.sopswarden.secrets`
-- Configures SOPS and systemd services
-- Exports secret accessors via `_module.args.secrets`
+- Configures SOPS integration with sops-nix
+- Exports secret accessors via `_module.args.secrets` using impure evaluation
+- Includes systemd service for running sopswarden-sync
 
 **Home Manager Module:** 
 - Simplified version for user-level usage
@@ -128,11 +131,11 @@ This eliminates the need for `--impure` flags or bootstrap modes.
 
 ## Critical Implementation Details
 
-### Pure Evaluation Requirements
-- **Never** use `builtins.readFile` during evaluation
-- **Always** return SOPS paths from `mkSecretAccessors` 
-- **Use** string paths (`types.str`) to avoid Nix store caching
-- **Defer** all file operations to runtime via systemd services
+### Impure Evaluation Design
+- **Uses `builtins.readFile` by Design**: `mkSecretAccessors` reads secret files during evaluation
+- **Smart Fallback**: Returns actual secret values when available, SOPS paths when not
+- **Hash-based Change Detection**: Uses `mkHashTracker` to prevent unnecessary operations
+- **Requires `--impure` Flag**: Sync script explicitly uses `nix eval --impure`
 
 ### Secret Accessor Export
 The NixOS module exports secrets via `_module.args.secrets`, making them available to all other modules.
@@ -144,10 +147,10 @@ Always ensure the `secrets.secret-name` access pattern continues to work - this 
 The comprehensive test suite (`./tests/run-tests.sh`) validates:
 
 **Core Functionality:**
-- Pure evaluation without `--impure` flags
+- Impure evaluation with `--impure` flags as expected
 - All library functions with edge cases
 - SOPS configuration generation
-- Secret accessor path mapping
+- Secret accessor value reading and path fallback
 
 **User Experience:**
 - Fresh installation workflow: user adds sopswarden → defines secrets → uses in services
@@ -157,8 +160,8 @@ The comprehensive test suite (`./tests/run-tests.sh`) validates:
 **Critical API Validation:**
 - `secrets.secret-name` syntax works in all NixOS modules
 - Different secret types (simple, complex, note) all work
-- Runtime systemd services handle sync and validation
-- No manual intervention required anywhere
+- Sync script handles Bitwarden integration and SOPS encryption
+- Hash-based change detection prevents unnecessary operations
 
 **When to run tests:**
 - **ALWAYS** after changing any file in `lib/`, `modules/`, or `flake.nix`
