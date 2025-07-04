@@ -3,15 +3,14 @@
 
 let
   flake = builtins.getFlake (toString ../..);
-  pkgs = import <nixpkgs> {};
-  
+
   # Initial configuration (existing state)
-  initialConfig = { config, pkgs, ... }: {
+  initialConfig = { ... }: {
     imports = [ flake.nixosModules.default ];
-    
+
     # Required for NixOS system evaluation
     system.stateVersion = "25.11";
-    
+
     services.sopswarden = {
       enable = true;
       secrets = {
@@ -24,14 +23,14 @@ let
       };
     };
   };
-  
+
   # Updated configuration (after adding new secrets)
-  updatedConfig = { config, pkgs, ... }: {
+  updatedConfig = { ... }: {
     imports = [ flake.nixosModules.default ];
-    
+
     # Required for NixOS system evaluation
     system.stateVersion = "25.11";
-    
+
     services.sopswarden = {
       enable = true;
       secrets = {
@@ -41,7 +40,7 @@ let
           name = "My Service API";
           user = "admin@example.com";
         };
-        
+
         # New secrets added
         database-password = {
           name = "Production Database";
@@ -49,64 +48,65 @@ let
           type = "login";
           field = "password";
         };
-        
+
         ssl-cert = {
           name = "SSL Certificate";
           type = "note";
           field = "notes";
         };
-        
+
         backup-key = "Backup Encryption Key";
       };
     };
   };
-  
+
   # Evaluate both configurations using nixosSystem for full module environment
   initialSystem = flake.inputs.nixpkgs.lib.nixosSystem {
     system = "x86_64-linux";
     modules = [ initialConfig ];
   };
-  
+
   updatedSystem = flake.inputs.nixpkgs.lib.nixosSystem {
     system = "x86_64-linux";
     modules = [ updatedConfig ];
   };
-  
+
   # Test results
   testResults = {
     # Initial state
     initialSecretCount = builtins.length (builtins.attrNames initialSystem.config.services.sopswarden.secrets);
     initialHasWifi = builtins.hasAttr "wifi-password" initialSystem.config.services.sopswarden.secrets;
     initialHasApi = builtins.hasAttr "api-key" initialSystem.config.services.sopswarden.secrets;
-    
+
     # Updated state
     updatedSecretCount = builtins.length (builtins.attrNames updatedSystem.config.services.sopswarden.secrets);
     updatedHasWifi = builtins.hasAttr "wifi-password" updatedSystem.config.services.sopswarden.secrets;
     updatedHasApi = builtins.hasAttr "api-key" updatedSystem.config.services.sopswarden.secrets;
-    
+
     # New secrets
     hasDatabase = builtins.hasAttr "database-password" updatedSystem.config.services.sopswarden.secrets;
     hasSslCert = builtins.hasAttr "ssl-cert" updatedSystem.config.services.sopswarden.secrets;
     hasBackupKey = builtins.hasAttr "backup-key" updatedSystem.config.services.sopswarden.secrets;
-    
+
     # Verify secret types are preserved
     databaseSecret = updatedSystem.config.services.sopswarden.secrets.database-password;
     sslSecret = updatedSystem.config.services.sopswarden.secrets.ssl-cert;
     backupSecret = updatedSystem.config.services.sopswarden.secrets.backup-key;
-    
+
     # Check that existing secrets are unchanged
-    wifiUnchanged = initialSystem.config.services.sopswarden.secrets.wifi-password == 
-                   updatedSystem.config.services.sopswarden.secrets.wifi-password;
-    apiUnchanged = initialSystem.config.services.sopswarden.secrets.api-key == 
-                   updatedSystem.config.services.sopswarden.secrets.api-key;
+    wifiUnchanged = initialSystem.config.services.sopswarden.secrets.wifi-password ==
+      updatedSystem.config.services.sopswarden.secrets.wifi-password;
+    apiUnchanged = initialSystem.config.services.sopswarden.secrets.api-key ==
+      updatedSystem.config.services.sopswarden.secrets.api-key;
   };
 
-in {
+in
+{
   # Test adding secrets workflow
   addSecrets = testResults;
-  
+
   # Validate the workflow works correctly
-  success = 
+  success =
     testResults.initialSecretCount == 2 &&
     testResults.updatedSecretCount == 5 &&
     testResults.updatedHasWifi &&
@@ -116,7 +116,7 @@ in {
     testResults.hasBackupKey &&
     testResults.wifiUnchanged &&
     testResults.apiUnchanged;
-    
+
   # Detailed validation
   validation = {
     correctInitialState = testResults.initialSecretCount == 2;

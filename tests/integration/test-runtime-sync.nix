@@ -3,10 +3,10 @@
 
 let
   flake = builtins.getFlake (toString ../..);
-  pkgs = import <nixpkgs> {};
-  
+  pkgs = import <nixpkgs> { };
+
   # Test sync script generation
-  testSyncScript = 
+  testSyncScript =
     let
       # Generate sync script with test configuration
       syncScript = flake.lib.mkSyncScript {
@@ -18,75 +18,78 @@ let
         forceSync = false;
         workingDirectory = "/etc/nixos";
       };
-    in {
+    in
+    {
       # Basic script validation
       isDerivation = builtins.isAttrs syncScript && builtins.hasAttr "type" syncScript;
       hasScript = builtins.hasAttr "name" syncScript;
       scriptName = if builtins.hasAttr "name" syncScript then syncScript.name else null;
     };
-  
+
   # Test application access scenario
-  testApplicationAccess = 
+  testApplicationAccess =
     let
       # System configuration that uses secrets in applications
-      appConfig = { config, pkgs, ... }: {
+      appConfig = { ... }: {
         imports = [ flake.nixosModules.default ];
-        
+
         # Required for NixOS system evaluation
         system.stateVersion = "25.11";
-        
-        services.sopswarden = {
-          enable = true;
-          secrets = {
-            # Database secrets
-            postgres-password = {
-              name = "Production Database";
-              user = "admin@company.com";
-              type = "login";
-              field = "password";
+
+        services = {
+          sopswarden = {
+            enable = true;
+            secrets = {
+              # Database secrets
+              postgres-password = {
+                name = "Production Database";
+                user = "admin@company.com";
+                type = "login";
+                field = "password";
+              };
+
+              # API secrets
+              api-token = "External API Service";
+
+              # SSL certificates
+              ssl-cert = {
+                name = "SSL Certificate";
+                type = "note";
+                field = "certificate";
+              };
+
+              ssl-key = {
+                name = "SSL Certificate";
+                type = "note";
+                field = "private_key";
+              };
             };
-            
-            # API secrets
-            api-token = "External API Service";
-            
-            # SSL certificates
-            ssl-cert = {
-              name = "SSL Certificate";
-              type = "note";
-              field = "certificate";
-            };
-            
-            ssl-key = {
-              name = "SSL Certificate";
-              type = "note";
-              field = "private_key";
+          };
+
+          # PostgreSQL service using secrets
+          postgresql = {
+            enable = true;
+            package = pkgs.postgresql_15;
+            authentication = ''
+              local all postgres peer
+              local all all md5
+            '';
+            # In practice, password would be set from secret file
+          };
+
+          # Nginx service using SSL certificates
+          nginx = {
+            enable = true;
+            virtualHosts."example.com" = {
+              enableACME = false;
+              forceSSL = true;
+              # In practice, these would reference the secret files:
+              # sslCertificate = "/run/secrets/ssl-cert";
+              # sslCertificateKey = "/run/secrets/ssl-key";
             };
           };
         };
-        
-        # PostgreSQL service using secrets
-        services.postgresql = {
-          enable = true;
-          package = pkgs.postgresql_15;
-          authentication = ''
-            local all postgres peer
-            local all all md5
-          '';
-          # In practice, password would be set from secret file
-        };
-        
-        # Nginx service using SSL certificates
-        services.nginx = {
-          enable = true;
-          virtualHosts."example.com" = {
-            enableACME = false;
-            forceSSL = true;
-            # In practice, these would reference the secret files:
-            # sslCertificate = "/run/secrets/ssl-cert";
-            # sslCertificateKey = "/run/secrets/ssl-key";
-          };
-        };
-        
+
         # Custom application service
         systemd.services.api-service = {
           description = "API service using sopswarden secrets";
@@ -116,38 +119,39 @@ let
             sleep infinity
           '';
         };
-        
+
         # User for the API service
         users.users.api-service = {
           isSystemUser = true;
           group = "api-service";
         };
-        
-        users.groups.api-service = {};
+
+        users.groups.api-service = { };
       };
-      
+
       # Evaluate the configuration using nixosSystem for full module environment
       testSystem = flake.inputs.nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [ appConfig ];
       };
-    in {
+    in
+    {
       # Service configuration validation
       hasPostgresql = testSystem.config.services.postgresql.enable;
       hasNginx = testSystem.config.services.nginx.enable;
       hasApiService = builtins.hasAttr "api-service" testSystem.config.systemd.services;
-      
+
       # Secret integration validation
       secretsCount = builtins.length (builtins.attrNames testSystem.config.services.sopswarden.secrets);
       sopsSecretsCount = builtins.length (builtins.attrNames testSystem.config.sops.secrets);
-      
+
       # Service-specific validation
       hasCredentials = builtins.hasAttr "LoadCredential" testSystem.config.systemd.services.api-service.serviceConfig;
-      
+
       # User creation
       hasApiUser = builtins.hasAttr "api-service" testSystem.config.users.users;
       hasApiGroup = builtins.hasAttr "api-service" testSystem.config.users.groups;
-      
+
       # All secrets defined
       hasPostgresPassword = builtins.hasAttr "postgres-password" testSystem.config.services.sopswarden.secrets;
       hasApiToken = builtins.hasAttr "api-token" testSystem.config.services.sopswarden.secrets;
@@ -155,15 +159,16 @@ let
       hasSslKey = builtins.hasAttr "ssl-key" testSystem.config.services.sopswarden.secrets;
     };
 
-in {
+in
+{
   # Test sync script generation
   syncScript = testSyncScript;
-  
+
   # Test application access
   applicationAccess = testApplicationAccess;
-  
+
   # Overall validation
-  success = 
+  success =
     testSyncScript.isDerivation &&
     testApplicationAccess.hasPostgresql &&
     testApplicationAccess.hasNginx &&
@@ -176,7 +181,7 @@ in {
     testApplicationAccess.hasApiToken &&
     testApplicationAccess.hasSslCert &&
     testApplicationAccess.hasSslKey;
-    
+
   # Detailed validation
   validation = {
     syncScriptGeneration = testSyncScript.isDerivation;

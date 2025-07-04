@@ -3,8 +3,7 @@
 
 let
   flake = builtins.getFlake (toString ../..);
-  pkgs = import <nixpkgs> {};
-  
+
   # Test basic flake structure
   testFlakeStructure = {
     hasLib = builtins.hasAttr "lib" flake;
@@ -12,16 +11,17 @@ let
     hasHomeManagerModules = builtins.hasAttr "homeManagerModules" flake;
     hasOverlays = builtins.hasAttr "overlays" flake;
   };
-  
+
   # Test library functions work with impure evaluation
-  testLibFunctions = 
+  testLibFunctions =
     let
-      lib = flake.lib;
-    in {
+      inherit (flake) lib;
+    in
+    {
       # Test pure functions
       canCreateSyncScript = builtins.isFunction lib.mkSyncScript;
       hasSecretTypes = builtins.hasAttr "secretTypes" lib;
-      
+
       # Test secret normalization
       normalizeSimpleSecret = lib.normalizeSecretDef "test-secret";
       normalizeComplexSecret = lib.normalizeSecretDef {
@@ -30,34 +30,36 @@ let
         type = "login";
         field = "password";
       };
-      
+
       # Test impure functions (these need files to exist for full testing)
       canCreateSopsSecrets = builtins.isFunction lib.mkSopsSecrets;
       canCreateSecretAccessors = builtins.isFunction lib.mkSecretAccessors;
       canCreateHashTracker = builtins.isFunction lib.mkHashTracker;
     };
-  
+
   # Test NixOS module options structure
-  testNixosModuleOptions = 
+  testNixosModuleOptions =
     let
       nixosModule = flake.nixosModules.default;
-    in {
+    in
+    {
       # Module should be a function
       isFunction = builtins.isFunction nixosModule;
-      
+
       # We can't safely do full module evaluation here due to sops-nix dependencies
       # This is a limitation of the test environment, not the code
       moduleCanBeImported = builtins.isFunction nixosModule;
     };
 
-in {
+in
+{
   # Test results
   flakeStructure = testFlakeStructure;
   libFunctions = testLibFunctions;
   nixosModuleOptions = testNixosModuleOptions;
-  
+
   # Overall success validation
-  success = 
+  success =
     testFlakeStructure.hasLib &&
     testFlakeStructure.hasNixosModules &&
     testLibFunctions.canCreateSyncScript &&

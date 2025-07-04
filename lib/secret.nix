@@ -3,7 +3,8 @@
 
 let
   esc = lib.escape [ "$" "}" ];
-in rec {
+in
+{
   ## 1.  The default: just a path (safe, zero copy in /nix/store)
   path = p: p;
 

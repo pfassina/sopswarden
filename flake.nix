@@ -22,18 +22,18 @@
 
       # NixOS modules
       nixosModules = {
-        default = import ./modules/nixos.nix { lib = nixpkgs.lib; inherit sops-nix; };
+        default = import ./modules/nixos.nix { inherit (nixpkgs) lib; inherit sops-nix; };
         sopswarden = self.nixosModules.default;
       };
 
       # Home Manager modules (optional)
       homeManagerModules = {
-        default = import ./modules/home-manager.nix { lib = nixpkgs.lib; };
+        default = import ./modules/home-manager.nix { inherit (nixpkgs) lib; };
         sopswarden = self.homeManagerModules.default;
       };
 
       # Overlay for packages
-      overlays.default = final: prev: {
+      overlays.default = final: _prev: {
         sopswarden-sync = lib.mkSyncScript {
           pkgs = final;
           # Default configuration - users can override
@@ -76,7 +76,7 @@
 
         # Checks for CI
         checks = {
-          nixpkgs-fmt = pkgs.runCommand "nixpkgs-fmt-check" {} ''
+          nixpkgs-fmt = pkgs.runCommand "nixpkgs-fmt-check" { } ''
             ${pkgs.nixpkgs-fmt}/bin/nixpkgs-fmt --check ${./.}
             touch $out
           '';

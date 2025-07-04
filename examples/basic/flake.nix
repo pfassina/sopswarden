@@ -6,7 +6,7 @@
     sopswarden.url = "path:../..";
   };
 
-  outputs = { self, nixpkgs, sopswarden, ... }: {
+  outputs = { nixpkgs, sopswarden, ... }: {
     nixosConfigurations.example = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
@@ -18,23 +18,23 @@
           # Enable sopswarden
           services.sopswarden = {
             enable = true;
-            
+
             # Use absolute paths to maintain pure evaluation
             # The systemd services will handle file creation at runtime
             sopsFile = "/var/lib/sopswarden/secrets.yaml";
             sopsConfigFile = "/var/lib/sopswarden/.sops.yaml";
-            
+
             # Define your secrets
             secrets = {
               # Simple secret (uses password field from login item)
               api-key = "My API Service";
-              
+
               # Secret with specific user account  
               database-password = {
                 name = "Database Server";
                 user = "admin@example.com";
               };
-              
+
               # Secret from secure note custom field
               wifi-password = {
                 name = "Home WiFi";

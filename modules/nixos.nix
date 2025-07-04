@@ -11,28 +11,23 @@ let
   syncScript = sopswardenLib.mkSyncScript {
     inherit (cfg) secretsFile sopsFile ageKeyFile sopsConfigFile workingDirectory;
     inherit pkgs;
-    rbwCommand = cfg.rbwCommand;
+    inherit (cfg) rbwCommand;
   };
 
   # Create SOPS secrets configuration from user secrets
   sopsSecrets = sopswardenLib.mkSopsSecrets {
-    secrets = cfg.secrets;
-    sopsFile = cfg.sopsFile;
-    defaultOwner = cfg.defaultOwner;
-    defaultGroup = cfg.defaultGroup;
-    defaultMode = cfg.defaultMode;
+    inherit (cfg) secrets sopsFile defaultOwner defaultGroup defaultMode;
   };
 
   # Create secret accessors for easy consumption (IMPURE)
   secretAccessors = sopswardenLib.mkSecretAccessors {
     inherit config;
-    secrets = cfg.secrets;
+    inherit (cfg) secrets;
   };
 
   # Hash tracking for change detection (IMPURE)
   hashTracker = sopswardenLib.mkHashTracker {
-    secretsFile = cfg.secretsFile;
-    hashFile = cfg.hashFile;
+    inherit (cfg) secretsFile hashFile;
   };
 
 in
@@ -46,7 +41,7 @@ in
 
     secrets = mkOption {
       type = types.attrsOf (types.either sopswardenLib.secretTypes.simpleSecret sopswardenLib.secretTypes.complexSecret);
-      default = {};
+      default = { };
       description = ''
         Secrets to sync from Bitwarden. Can be either:
         - Simple: secret-name = "Bitwarden Item Name"
@@ -163,7 +158,7 @@ in
       sops = {
         defaultSopsFile = cfg.sopsFile;
         defaultSopsFormat = "yaml";
-        
+
         age = {
           keyFile = cfg.ageKeyFile;
           generateKey = true;
@@ -173,10 +168,10 @@ in
       };
 
       # Export secrets for easy access in other modules
-      _module.args = { 
+      _module.args = {
         secrets = secretAccessors;
         sopswardenSecrets = secretAccessors; # Alternative name
-        mkSecret = sopswardenLib.mkSecret; # Export helper function
+        inherit (sopswardenLib) mkSecret; # Export helper function
       };
     }
 

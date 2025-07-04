@@ -10,7 +10,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, sopswarden, home-manager, ... }: {
+  outputs = { nixpkgs, sopswarden, home-manager, ... }: {
     nixosConfigurations.advanced = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
@@ -23,52 +23,52 @@
           # Advanced sopswarden configuration
           services.sopswarden = {
             enable = true;
-            
+
             # Custom file locations (using absolute paths for pure evaluation)
             sopsFile = "/var/lib/sopswarden/secrets.yaml";
             sopsConfigFile = "/var/lib/sopswarden/.sops.yaml";
-            
+
             # Custom rbw configuration (e.g., for self-hosted Bitwarden)
             rbwCommand = "${pkgs.rbw}/bin/rbw";
-            
+
             # Custom ownership for secrets
             defaultOwner = "myuser";
             defaultGroup = "users";
             defaultMode = "0440";
-            
+
             # Define secrets with various patterns
             secrets = {
               # Database cluster secrets
-              postgres-master-password = { 
-                name = "Database Cluster"; 
+              postgres-master-password = {
+                name = "Database Cluster";
                 user = "postgres@production.com";
               };
-              postgres-replica-password = { 
-                name = "Database Cluster"; 
-                user = "replica@production.com"; 
+              postgres-replica-password = {
+                name = "Database Cluster";
+                user = "replica@production.com";
               };
-              
+
               # API keys for different environments
-              api-key-production = { 
-                name = "Service API"; 
-                user = "production@company.com"; 
+              api-key-production = {
+                name = "Service API";
+                user = "production@company.com";
               };
-              api-key-staging = { 
-                name = "Service API"; 
-                user = "staging@company.com"; 
+              api-key-staging = {
+                name = "Service API";
+                user = "staging@company.com";
               };
-              
+
               # Network infrastructure
               vpn-config = {
                 name = "Network Infrastructure";
                 type = "note";
                 field = "vpn_config";
               };
-              
+
               # SSL certificates
               ssl-private-key = {
                 name = "SSL Certificates";
-                type = "note"; 
+                type = "note";
                 field = "private_key";
               };
               ssl-certificate = {
@@ -76,7 +76,7 @@
                 type = "note";
                 field = "certificate";
               };
-              
+
               # Monitoring and alerting
               grafana-admin-password = "Grafana Admin";
               prometheus-remote-write-token = {
@@ -84,10 +84,10 @@
                 type = "note";
                 field = "prometheus_token";
               };
-              
+
               # Backup encryption
               restic-password = "Backup Encryption";
-              
+
               # Email configuration
               smtp-password = {
                 name = "Email Server";
@@ -106,13 +106,13 @@
                 host production_db postgres 10.0.0.0/8 md5
               '';
             };
-            
+
             # Grafana with admin password
             grafana = {
               enable = true;
               settings.security.admin_password = "$__file{${config.sops.secrets.grafana-admin-password.path}}";
             };
-            
+
             # Restic backup
             restic.backups.daily = {
               passwordFile = config.sops.secrets.restic-password.path;
@@ -135,12 +135,12 @@
               enable = true;
               settings = {
                 email = "admin@company.com";
-                base_url = "https://vault.company.com";  # Self-hosted Bitwarden
+                base_url = "https://vault.company.com"; # Self-hosted Bitwarden
                 lock_timeout = 3600;
                 pinentry = pkgs.pinentry-gtk2;
               };
             };
-            
+
             # Note: programs.sopswarden would be available if homeManagerModules were imported
             # For now, sopswarden is configured at system level
           };
