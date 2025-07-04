@@ -5,7 +5,7 @@ let
   flake = builtins.getFlake (toString ../..);
 
   # Test NixOS system configuration using sopswarden secrets
-  systemConfig = { config, pkgs, secrets, ... }: {
+  systemConfig = { secrets, ... }: {
     imports = [ flake.nixosModules.default ];
 
     # Required for NixOS system evaluation
@@ -101,14 +101,14 @@ let
 
   # Extract helper values first
   etcFiles = testSystem.config.environment.etc;
-  apiConfigFile = etcFiles."api-config" or {};
-  databaseConfigFile = etcFiles."database-config" or {};
+  apiConfigFile = etcFiles."api-config" or { };
+  databaseConfigFile = etcFiles."database-config" or { };
   apiConfigText = apiConfigFile.text or "";
   databaseConfigText = databaseConfigFile.text or "";
-  
-  backupService = testSystem.config.systemd.services.backup-service or {};
-  backupServiceConfig = backupService.serviceConfig or {};
-  backupCredentials = backupServiceConfig.LoadCredential or [];
+
+  backupService = testSystem.config.systemd.services.backup-service or { };
+  backupServiceConfig = backupService.serviceConfig or { };
+  backupCredentials = backupServiceConfig.LoadCredential or [ ];
   backupScript = backupService.script or "";
 
   # Test results
@@ -142,13 +142,13 @@ let
     # Check that secrets are properly exported to other modules
     # This tests the _module.args.secrets export functionality
     hasModuleArgs = builtins.hasAttr "_module" testSystem.config;
-    
+
     # Verify secrets paths are correctly configured
     apiConfigHasSecretPath = builtins.match ".*token_file = /run/secrets/api-token.*" apiConfigText != null;
     databaseConfigHasSecretPath = builtins.match ".*password_file = /run/secrets/database-password.*" databaseConfigText != null;
-    
+
     # Verify LoadCredential uses correct secret path
-    backupUsesCorrectCredential = builtins.any (cred: builtins.match "backup-key:/run/secrets/backup-key" cred != null) (if builtins.isList backupCredentials then backupCredentials else [backupCredentials]);
+    backupUsesCorrectCredential = builtins.any (cred: builtins.match "backup-key:/run/secrets/backup-key" cred != null) (if builtins.isList backupCredentials then backupCredentials else [ backupCredentials ]);
     backupScriptReferencesSecrets = builtins.match ".*SSL certificate path: /run/secrets/ssl-cert.*" backupScript != null;
 
     # Verify package installation

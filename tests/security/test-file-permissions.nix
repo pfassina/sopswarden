@@ -3,7 +3,6 @@
 
 let
   flake = builtins.getFlake (toString ../..);
-  pkgs = import <nixpkgs> { };
 
   # Test default security settings
   testDefaultSecurity =
@@ -31,16 +30,20 @@ let
 
       # Test mkSopsSecrets default security
       sopsSecretsHaveSecrets = builtins.hasAttr "secure-secret" defaultSopsSecrets && builtins.hasAttr "another-secret" defaultSopsSecrets;
-      firstSecretMode = if builtins.hasAttr "secure-secret" defaultSopsSecrets 
+      firstSecretMode =
+        if builtins.hasAttr "secure-secret" defaultSopsSecrets
         then defaultSopsSecrets.secure-secret.mode == "0400"
         else false;
-      firstSecretOwner = if builtins.hasAttr "secure-secret" defaultSopsSecrets
+      firstSecretOwner =
+        if builtins.hasAttr "secure-secret" defaultSopsSecrets
         then defaultSopsSecrets.secure-secret.owner == "root"
         else false;
-      firstSecretGroup = if builtins.hasAttr "secure-secret" defaultSopsSecrets
+      firstSecretGroup =
+        if builtins.hasAttr "secure-secret" defaultSopsSecrets
         then defaultSopsSecrets.secure-secret.group == "root"
         else false;
-      secondSecretMode = if builtins.hasAttr "another-secret" defaultSopsSecrets
+      secondSecretMode =
+        if builtins.hasAttr "another-secret" defaultSopsSecrets
         then defaultSopsSecrets.another-secret.mode == "0400"
         else false;
     };
@@ -77,19 +80,24 @@ let
 
       # Test mkSopsSecrets custom security
       customSopsHasSecrets = builtins.hasAttr "app-secret" customSopsSecrets && builtins.hasAttr "db-secret" customSopsSecrets;
-      appSecretMode = if builtins.hasAttr "app-secret" customSopsSecrets
+      appSecretMode =
+        if builtins.hasAttr "app-secret" customSopsSecrets
         then customSopsSecrets.app-secret.mode == "0440"
         else false;
-      appSecretOwner = if builtins.hasAttr "app-secret" customSopsSecrets
+      appSecretOwner =
+        if builtins.hasAttr "app-secret" customSopsSecrets
         then customSopsSecrets.app-secret.owner == "app-service"
         else false;
-      appSecretGroup = if builtins.hasAttr "app-secret" customSopsSecrets
+      appSecretGroup =
+        if builtins.hasAttr "app-secret" customSopsSecrets
         then customSopsSecrets.app-secret.group == "app-service"
         else false;
-      dbSecretMode = if builtins.hasAttr "db-secret" customSopsSecrets
+      dbSecretMode =
+        if builtins.hasAttr "db-secret" customSopsSecrets
         then customSopsSecrets.db-secret.mode == "0440"
         else false;
-      dbSecretOwner = if builtins.hasAttr "db-secret" customSopsSecrets
+      dbSecretOwner =
+        if builtins.hasAttr "db-secret" customSopsSecrets
         then customSopsSecrets.db-secret.owner == "app-service"
         else false;
     };
@@ -159,13 +167,16 @@ let
       hasDbCredentials = builtins.hasAttr "db-credentials" testSystem.config.sops.secrets;
 
       # Test specific security attributes (if accessible)
-      adminPasswordMode = if builtins.hasAttr "admin-password" testSystem.config.sops.secrets
+      adminPasswordMode =
+        if builtins.hasAttr "admin-password" testSystem.config.sops.secrets
         then testSystem.config.sops.secrets.admin-password.mode == "0440"
         else false;
-      adminPasswordOwner = if builtins.hasAttr "admin-password" testSystem.config.sops.secrets
+      adminPasswordOwner =
+        if builtins.hasAttr "admin-password" testSystem.config.sops.secrets
         then testSystem.config.sops.secrets.admin-password.owner == "root"
         else false;
-      adminPasswordGroup = if builtins.hasAttr "admin-password" testSystem.config.sops.secrets
+      adminPasswordGroup =
+        if builtins.hasAttr "admin-password" testSystem.config.sops.secrets
         then testSystem.config.sops.secrets.admin-password.group == "secrets"
         else false;
 
@@ -193,7 +204,7 @@ let
       ];
 
       # Helper to check if a mode is secure (no world access)
-      isSecureMode = mode: 
+      isSecureMode = mode:
         let
           # Extract world permissions (last digit)
           worldPerms = builtins.substring 3 1 mode;
@@ -201,11 +212,13 @@ let
         worldPerms == "0";
 
       # Test each permission pattern
-      permissionTests = map (perm: {
-        inherit (perm) mode description;
-        isSecure = isSecureMode perm.mode;
-        matchesExpected = isSecureMode perm.mode == perm.valid;
-      }) permissions;
+      permissionTests = map
+        (perm: {
+          inherit (perm) mode description;
+          isSecure = isSecureMode perm.mode;
+          matchesExpected = isSecureMode perm.mode == perm.valid;
+        })
+        permissions;
 
       # Count secure vs insecure modes
       secureCount = builtins.length (builtins.filter (p: p.isSecure) permissionTests);
@@ -279,30 +292,33 @@ let
       };
 
       # Extract service configuration safely
-      serviceConfig = if builtins.hasAttr "secure-app" testSystem.config.systemd.services
+      serviceConfig =
+        if builtins.hasAttr "secure-app" testSystem.config.systemd.services
         then testSystem.config.systemd.services.secure-app.serviceConfig
-        else {};
+        else { };
     in
     {
       systemEvaluates = builtins.hasAttr "config" testSystem;
       hasSecureApp = builtins.hasAttr "secure-app" testSystem.config.systemd.services;
-      
+
       # Check security hardening
       hasLoadCredential = builtins.hasAttr "LoadCredential" serviceConfig;
-      credentialCount = if builtins.hasAttr "LoadCredential" serviceConfig
+      credentialCount =
+        if builtins.hasAttr "LoadCredential" serviceConfig
         then builtins.length serviceConfig.LoadCredential
         else 0;
-      
+
       # Check security hardening features
       noNewPrivileges = serviceConfig.NoNewPrivileges or false;
       privateTmp = serviceConfig.PrivateTmp or false;
       protectSystem = serviceConfig.ProtectSystem == "strict";
       protectHome = serviceConfig.ProtectHome or false;
       restrictSUIDSGID = serviceConfig.RestrictSUIDSGID or false;
-      
+
       # Check user isolation
       hasSecureUser = builtins.hasAttr "secure-app" testSystem.config.users.users;
-      userIsSystem = if builtins.hasAttr "secure-app" testSystem.config.users.users
+      userIsSystem =
+        if builtins.hasAttr "secure-app" testSystem.config.users.users
         then testSystem.config.users.users.secure-app.isSystemUser
         else false;
     };

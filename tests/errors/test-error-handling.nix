@@ -69,9 +69,9 @@ let
 
       # Test with malformed secrets
       malformedSecretsResult = builtins.tryEval (flake.lib.mkSecretAccessors {
-        config = { 
-          sops = { 
-            secrets = { 
+        config = {
+          sops = {
+            secrets = {
               test-secret = { path = "/run/secrets/test-secret"; };
             };
           };
@@ -124,7 +124,7 @@ let
       invalidPathsResult = builtins.tryEval (flake.lib.mkSyncScript {
         inherit pkgs;
         secretsFile = ""; # Empty path
-        sopsFile = "";   # Empty path
+        sopsFile = ""; # Empty path
         ageKeyFile = ""; # Empty path
       });
 
@@ -309,18 +309,20 @@ let
       validComplexSucceeds = validComplexResult.success;
 
       # Verify mixed result has correct values
-      mixedAttrsCorrect = if mixedAttrsResult.success
+      mixedAttrsCorrect =
+        if mixedAttrsResult.success
         then mixedAttrsResult.value.name == "Test Secret" &&
-             mixedAttrsResult.value.type == "login" &&
-             mixedAttrsResult.value.field == "password" &&
-             mixedAttrsResult.value.user == "test@example.com"
+          mixedAttrsResult.value.type == "login" &&
+          mixedAttrsResult.value.field == "password" &&
+          mixedAttrsResult.value.user == "test@example.com"
         else false;
 
       # Verify valid string normalization
-      validStringCorrect = if validStringResult.success
+      validStringCorrect =
+        if validStringResult.success
         then validStringResult.value.name == "Valid Secret" &&
-             validStringResult.value.type == "login" &&
-             validStringResult.value.field == "password"
+          validStringResult.value.type == "login" &&
+          validStringResult.value.field == "password"
         else false;
     };
 

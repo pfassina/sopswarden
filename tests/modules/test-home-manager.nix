@@ -14,7 +14,7 @@ let
       # Test basic module structure with sopswarden configuration
       moduleTest = { ... }: {
         imports = [ homeManagerModule ];
-        
+
         # Test configuration to ensure module works
         programs = {
           sopswarden = {

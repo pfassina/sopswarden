@@ -33,7 +33,7 @@ let
         };
         api-key = {
           name = "API Service";
-          type = "login"; 
+          type = "login";
           field = "password";
           user = "admin@example.com";
         };
@@ -46,14 +46,14 @@ let
       });
 
       # Extract values for testing
-      secretAccessors = if secretAccessorsResult.success then secretAccessorsResult.value else {};
+      secretAccessors = if secretAccessorsResult.success then secretAccessorsResult.value else { };
       wifiPasswordPath = secretAccessors.wifi-password or null;
       apiKeyPath = secretAccessors.api-key or null;
     in
     {
       # Basic functionality
       canCallFunction = builtins.isFunction flake.lib.mkSecretAccessors;
-      
+
       # Test results from tryEval
       callSucceeded = secretAccessorsResult.success;
       resultIsAttrSet = if secretAccessorsResult.success then builtins.isAttrs secretAccessorsResult.value else false;
@@ -64,7 +64,7 @@ let
 
       # Verify content reading - since files exist, should return content
       pathsAreStrings = builtins.isString wifiPasswordPath && builtins.isString apiKeyPath;
-      secretsHaveCorrectContent = 
+      secretsHaveCorrectContent =
         (wifiPasswordPath == "mock-wifi-password") &&
         (apiKeyPath == "mock-api-key");
 
@@ -77,8 +77,8 @@ let
   testEmptySecrets =
     let
       emptyAccessors = flake.lib.mkSecretAccessors {
-        config = { sops = { secrets = {}; }; };
-        secrets = {};
+        config = { sops = { secrets = { }; }; };
+        secrets = { };
       };
     in
     {
@@ -91,7 +91,7 @@ let
     let
       # This should handle gracefully when SOPS secrets don't exist yet
       missingResult = builtins.tryEval (flake.lib.mkSecretAccessors {
-        config = { sops = { secrets = {}; }; };
+        config = { sops = { secrets = { }; }; };
         secrets = { test-secret = { name = "Test"; type = "login"; field = "password"; user = null; }; };
       });
     in
@@ -118,17 +118,18 @@ let
               enableChangeDetection = false;
             };
           };
-        in testConfig
+        in
+        testConfig
       );
     in
     {
       # Check that module can be imported
       moduleImportsSuccessfully = moduleImportTest.success;
-      
+
       # Basic module structure tests (these don't trigger evaluation)
       moduleIsFunction = builtins.isFunction flake.nixosModules.default;
       hasDefaultModule = builtins.hasAttr "default" flake.nixosModules;
-      
+
       # Mock successful integration for now
       hasModuleArgs = true;
       moduleArgsHasSecrets = true;

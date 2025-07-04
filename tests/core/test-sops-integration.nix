@@ -5,20 +5,20 @@ let
   flake = builtins.getFlake (toString ../..);
 
   # Test that function exists and can be called
-  testBasicFunctionality = 
+  testBasicFunctionality =
     let
       # Test with minimal parameters
       minimalTest = builtins.tryEval (flake.lib.mkSopsSecrets {
-        secrets = {};
+        secrets = { };
         sopsFile = "/test/secrets.yaml";
       });
-      
-      minimalResult = if minimalTest.success then minimalTest.value else {};
+
+      minimalResult = if minimalTest.success then minimalTest.value else { };
     in
     {
       # Test function existence
       canCallFunction = builtins.isFunction flake.lib.mkSopsSecrets;
-      
+
       minimalWorks = minimalTest.success;
       minimalIsEmpty = builtins.length (builtins.attrNames minimalResult) == 0;
     };
@@ -37,9 +37,9 @@ let
         defaultGroup = "testgroup";
         defaultMode = "0600";
       });
-      
-      customResult = if customSopsTest.success then customSopsTest.value else {};
-      
+
+      customResult = if customSopsTest.success then customSopsTest.value else { };
+
       # Test with different sopsFile
       altSopsTest = builtins.tryEval (flake.lib.mkSopsSecrets {
         secrets = {
@@ -47,37 +47,42 @@ let
         };
         sopsFile = "/alternative/secrets.yaml";
       });
-      
-      altResult = if altSopsTest.success then altSopsTest.value else {};
+
+      altResult = if altSopsTest.success then altSopsTest.value else { };
     in
     {
       # Test function calls
       customSopsWorks = customSopsTest.success;
       altSopsWorks = altSopsTest.success;
-      
+
       # Test results structure
       customHasSecrets = builtins.hasAttr "test-secret" customResult && builtins.hasAttr "another-secret" customResult;
       altHasSecret = builtins.hasAttr "test-secret" altResult;
-      
+
       # Test that sopsFile is properly set (this was the bug)
-      customSopsFileCorrect = if customSopsTest.success && builtins.hasAttr "test-secret" customResult 
+      customSopsFileCorrect =
+        if customSopsTest.success && builtins.hasAttr "test-secret" customResult
         then customResult.test-secret.sopsFile == "/custom/path/secrets.yaml"
         else false;
-      altSopsFileCorrect = if altSopsTest.success && builtins.hasAttr "test-secret" altResult
-        then altResult.test-secret.sopsFile == "/alternative/secrets.yaml" 
+      altSopsFileCorrect =
+        if altSopsTest.success && builtins.hasAttr "test-secret" altResult
+        then altResult.test-secret.sopsFile == "/alternative/secrets.yaml"
         else false;
-      
+
       # Test other parameters
-      customOwnerCorrect = if customSopsTest.success && builtins.hasAttr "test-secret" customResult
+      customOwnerCorrect =
+        if customSopsTest.success && builtins.hasAttr "test-secret" customResult
         then customResult.test-secret.owner == "testuser"
         else false;
-      customGroupCorrect = if customSopsTest.success && builtins.hasAttr "test-secret" customResult
+      customGroupCorrect =
+        if customSopsTest.success && builtins.hasAttr "test-secret" customResult
         then customResult.test-secret.group == "testgroup"
         else false;
-      customModeCorrect = if customSopsTest.success && builtins.hasAttr "test-secret" customResult
+      customModeCorrect =
+        if customSopsTest.success && builtins.hasAttr "test-secret" customResult
         then customResult.test-secret.mode == "0600"
         else false;
-      
+
       # Test secret count
       customSecretCount = builtins.length (builtins.attrNames customResult);
       altSecretCount = builtins.length (builtins.attrNames altResult);
@@ -92,21 +97,24 @@ let
         };
         # Using default sopsFile = ./secrets.yaml
       });
-      
-      defaultResult = if defaultTest.success then defaultTest.value else {};
+
+      defaultResult = if defaultTest.success then defaultTest.value else { };
     in
     {
       defaultWorks = defaultTest.success;
       hasDefaultSecret = builtins.hasAttr "default-secret" defaultResult;
-      
+
       # Test default values
-      defaultOwnerCorrect = if defaultTest.success && builtins.hasAttr "default-secret" defaultResult
+      defaultOwnerCorrect =
+        if defaultTest.success && builtins.hasAttr "default-secret" defaultResult
         then defaultResult.default-secret.owner == "root"
         else false;
-      defaultGroupCorrect = if defaultTest.success && builtins.hasAttr "default-secret" defaultResult
+      defaultGroupCorrect =
+        if defaultTest.success && builtins.hasAttr "default-secret" defaultResult
         then defaultResult.default-secret.group == "root"
         else false;
-      defaultModeCorrect = if defaultTest.success && builtins.hasAttr "default-secret" defaultResult
+      defaultModeCorrect =
+        if defaultTest.success && builtins.hasAttr "default-secret" defaultResult
         then defaultResult.default-secret.mode == "0400"
         else false;
     };

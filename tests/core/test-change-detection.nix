@@ -3,7 +3,7 @@
 
 let
   flake = builtins.getFlake (toString ../..);
-  pkgs = import <nixpkgs> {};
+  pkgs = import <nixpkgs> { };
 
   # Test mkHashTracker function with various scenarios
   testHashTracking =
@@ -167,12 +167,12 @@ let
         secretsFile = "/new/secrets.nix";
         hashFile = "/new/secrets.hash";
       });
-      
+
       missingHashResult = builtins.tryEval (flake.lib.mkHashTracker {
         secretsFile = "/etc/nixos/secrets.nix";
         hashFile = "/missing/secrets.hash";
       });
-      
+
       normalResult = builtins.tryEval (flake.lib.mkHashTracker {
         secretsFile = "/etc/nixos/secrets.nix";
         hashFile = "/etc/nixos/secrets.hash";
@@ -215,10 +215,10 @@ let
     {
       # Change detection should be enabled in configuration
       changeDetectionEnabled = evaluatedSystem.config.services.sopswarden.enableChangeDetection;
-      
+
       # Configuration should evaluate successfully
       systemEvaluates = builtins.hasAttr "config" evaluatedSystem;
-      
+
       # Hash file should be configured
       hashFileConfigured = evaluatedSystem.config.services.sopswarden.hashFile == "/etc/nixos/secrets.hash";
     };

@@ -6,28 +6,19 @@ let
   pkgs = import <nixpkgs> { };
 
   # Helper to create a unique temporary directory name
-  tempDirBase = "/tmp/sopswarden-test-${builtins.toString (builtins.currentTime)}";
+  tempDirBase = "/tmp/sopswarden-test-${builtins.toString builtins.currentTime}";
 
   # Test hash tracker with real files
   testRealHashTracking =
     let
-      # Create temporary test content
-      testSecretsContent = ''
-        {
-          wifi-password = "Home WiFi Network";
-          api-key = { name = "Test API"; user = "test@example.com"; };
-        }
-      '';
-      
+
       # Test scenarios with different file states
       tempDir = "${tempDirBase}-hash";
-      secretsFile = "${tempDir}/secrets.nix";
-      hashFile = "${tempDir}/secrets.hash";
 
       # Test with files that might exist vs. don't exist
       # Note: In a real test environment, we'd create these files
       # For now, we test the behavior with likely non-existent paths
-      
+
       # Test hash tracking with predictable content
       etcPasswdHash = builtins.tryEval (flake.lib.mkHashTracker {
         secretsFile = "/etc/passwd"; # File that should exist
@@ -50,13 +41,16 @@ let
       # Test with existing file (should succeed)
       etcPasswdHandled = builtins.isAttrs etcPasswdHash;
       etcPasswdResult = etcPasswdHash.success;
-      etcPasswdHasHash = if etcPasswdHash.success 
+      etcPasswdHasHash =
+        if etcPasswdHash.success
         then builtins.isString etcPasswdHash.value.secretsHash
         else false;
-      etcPasswdHasLastSync = if etcPasswdHash.success
-        then builtins.isString etcPasswdHash.value.lastSyncHash  
+      etcPasswdHasLastSync =
+        if etcPasswdHash.success
+        then builtins.isString etcPasswdHash.value.lastSyncHash
         else false;
-      etcPasswdHasChanged = if etcPasswdHash.success
+      etcPasswdHasChanged =
+        if etcPasswdHash.success
         then builtins.isBool etcPasswdHash.value.hasChanged
         else false;
 
@@ -69,7 +63,8 @@ let
       invalidPathFails = !invalidPath.success;
 
       # Verify hash format (should be hex string)
-      hashFormatValid = if etcPasswdHash.success
+      hashFormatValid =
+        if etcPasswdHash.success
         then builtins.match "[0-9a-f]+" etcPasswdHash.value.secretsHash != null
         else false;
     };
@@ -102,7 +97,7 @@ let
         secrets = mockSecrets;
       });
 
-      accessors = if secretAccessorsResult.success then secretAccessorsResult.value else {};
+      accessors = if secretAccessorsResult.success then secretAccessorsResult.value else { };
     in
     {
       # Secret accessors should work
@@ -116,11 +111,11 @@ let
       # Test secret should return content (from /etc/hostname)
       testSecretValue = accessors.test-secret or null;
       testSecretIsString = builtins.isString (accessors.test-secret or "");
-      
+
       # Another test secret should return content (from /etc/passwd)
       anotherTestSecretValue = accessors.another-test-secret or null;
       anotherTestSecretIsString = builtins.isString (accessors.another-test-secret or "");
-      
+
       # Both should have content (not just paths)
       bothHaveContent = builtins.isString (accessors.test-secret or "") && builtins.isString (accessors.another-test-secret or "");
 
@@ -163,22 +158,26 @@ let
     {
       # Basic script generation
       syncScriptWorks = syncScriptResult.success;
-      syncScriptIsDerivation = if syncScriptResult.success
+      syncScriptIsDerivation =
+        if syncScriptResult.success
         then builtins.isAttrs syncScript && builtins.hasAttr "type" syncScript
         else false;
-      syncScriptHasName = if syncScriptResult.success
+      syncScriptHasName =
+        if syncScriptResult.success
         then builtins.isString (syncScript.name or "")
         else false;
 
       # Force sync script
       forceSyncWorks = forceSyncScript.success;
-      forceSyncIsDerivation = if forceSyncScript.success
+      forceSyncIsDerivation =
+        if forceSyncScript.success
         then builtins.isAttrs forceSyncScript.value && builtins.hasAttr "type" forceSyncScript.value
         else false;
 
       # Custom rbw script
       customRbwWorks = customRbwScript.success;
-      customRbwIsDerivation = if customRbwScript.success
+      customRbwIsDerivation =
+        if customRbwScript.success
         then builtins.isAttrs customRbwScript.value && builtins.hasAttr "type" customRbwScript.value
         else false;
 
@@ -242,18 +241,22 @@ let
 
       # Service configuration
       sopswardenEnabled = if moduleResult.success then moduleSystem.config.services.sopswarden.enable else false;
-      secretsConfigured = if moduleResult.success 
+      secretsConfigured =
+        if moduleResult.success
         then builtins.length (builtins.attrNames moduleSystem.config.services.sopswarden.secrets) == 2
         else false;
 
       # File paths
-      secretsFileSet = if moduleResult.success
+      secretsFileSet =
+        if moduleResult.success
         then builtins.match ".*secrets\\.nix" (builtins.toString moduleSystem.config.services.sopswarden.secretsFile) != null
         else false;
-      sopsFileSet = if moduleResult.success
+      sopsFileSet =
+        if moduleResult.success
         then builtins.match ".*secrets\\.yaml" (builtins.toString moduleSystem.config.services.sopswarden.sopsFile) != null
         else false;
-      hashFileSet = if moduleResult.success
+      hashFileSet =
+        if moduleResult.success
         then builtins.match ".*secrets\\.hash" moduleSystem.config.services.sopswarden.hashFile != null
         else false;
 
@@ -269,7 +272,8 @@ let
 
       # SOPS integration
       hasSopsConfig = if moduleResult.success then builtins.hasAttr "sops" moduleSystem.config else false;
-      sopsSecretsCount = if moduleResult.success && builtins.hasAttr "sops" moduleSystem.config
+      sopsSecretsCount =
+        if moduleResult.success && builtins.hasAttr "sops" moduleSystem.config
         then builtins.length (builtins.attrNames moduleSystem.config.sops.secrets)
         else 0;
     };
@@ -319,12 +323,12 @@ let
       tempSecretValid = tempSecret.owner == "app-user" && tempSecret.mode == "0440";
 
       # mkSopsSecrets tests  
-      mixedSecretsValid = builtins.hasAttr "local-secret" mixedSopsSecrets && 
-                         builtins.hasAttr "absolute-secret" mixedSopsSecrets &&
-                         builtins.hasAttr "temp-secret" mixedSopsSecrets;
-      
+      mixedSecretsValid = builtins.hasAttr "local-secret" mixedSopsSecrets &&
+        builtins.hasAttr "absolute-secret" mixedSopsSecrets &&
+        builtins.hasAttr "temp-secret" mixedSopsSecrets;
+
       # Verify sopsFile is properly set for all secrets
-      allSopsFilesCorrect = 
+      allSopsFilesCorrect =
         mixedSopsSecrets.local-secret.sopsFile == "${tempDirBase}-mixed/secrets.yaml" &&
         mixedSopsSecrets.absolute-secret.sopsFile == "${tempDirBase}-mixed/secrets.yaml" &&
         mixedSopsSecrets.temp-secret.sopsFile == "${tempDirBase}-mixed/secrets.yaml";

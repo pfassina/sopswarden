@@ -11,7 +11,7 @@ let
     hasMkSecretAccessors = builtins.isFunction flake.lib.mkSecretAccessors;
     hasMkSopsSecrets = builtins.isFunction flake.lib.mkSopsSecrets;
     hasNormalizeSecretDef = builtins.isFunction flake.lib.normalizeSecretDef;
-    
+
     # Test secret normalization (core functionality)
     simpleSecret = flake.lib.normalizeSecretDef "test-secret";
     complexSecret = flake.lib.normalizeSecretDef {
@@ -20,7 +20,7 @@ let
       type = "login";
       field = "password";
     };
-    
+
     # Verify normalization works correctly
     simpleCorrect = flake.lib.normalizeSecretDef "test-secret" == {
       name = "test-secret";
@@ -28,19 +28,21 @@ let
       type = "login";
       field = "password";
     };
-    
-    complexCorrect = 
-      let result = flake.lib.normalizeSecretDef {
-        name = "complex-secret";
-        user = "user@example.com";
-        type = "login";
-        field = "password";
-      };
-      in result.name == "complex-secret" && result.user == "user@example.com";
+
+    complexCorrect =
+      let
+        result = flake.lib.normalizeSecretDef {
+          name = "complex-secret";
+          user = "user@example.com";
+          type = "login";
+          field = "password";
+        };
+      in
+      result.name == "complex-secret" && result.user == "user@example.com";
   };
 
   # Test basic NixOS module integration (without triggering file reads)
-  testModuleIntegration = 
+  testModuleIntegration =
     let
       # Simple module test that doesn't trigger problematic functions
       moduleTest = builtins.tryEval (
@@ -48,7 +50,7 @@ let
           simpleConfig = { ... }: {
             imports = [ flake.nixosModules.default ];
             system.stateVersion = "25.11";
-            
+
             services.sopswarden = {
               enable = true;
               secrets = {
@@ -60,7 +62,8 @@ let
               installSyncCommand = false;
             };
           };
-        in simpleConfig
+        in
+        simpleConfig
       );
     in
     {
@@ -76,10 +79,10 @@ let
       "api-key" = "/run/secrets/api-key";
       "database-password" = "/run/secrets/database-password";
     };
-    
+
     # Verify the pattern: secret-name -> /run/secrets/secret-name
     pathPatternCorrect = true; # This is the expected behavior
-    
+
     # Test that complex secret names work
     complexNames = {
       "service-api-key" = "/run/secrets/service-api-key";
