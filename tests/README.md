@@ -24,6 +24,13 @@ This test suite validates all core functionality and user journeys for the sopsw
 - **test-runtime-sync.nix**: Tests sync script generation and application access to secrets
 - **test-rbw-states.nix**: Tests handling of rbw locked/unlocked/unavailable states during build
 - **test-secret-path-resolution.nix**: Tests end-to-end secret path resolution
+- **test-filesystem-integration.nix**: Tests real file operations and path resolution with temporary files
+
+### Security Tests (`security/`)
+- **test-file-permissions.nix**: Tests file permissions, ownership, and security attributes for secrets
+
+### Error Handling Tests (`errors/`)
+- **test-error-handling.nix**: Tests error scenarios, edge cases, and graceful failure handling
 
 ## Running Tests
 
@@ -90,6 +97,19 @@ The test suite validates:
 - [x] Systemd service integration
 - [x] Secret file access patterns
 - [x] Credential loading for applications
+- [x] Real filesystem operations and file I/O
+
+### ✅ Security Validation
+- [x] File permissions and ownership settings
+- [x] Security attribute validation
+- [x] SystemD credential security
+- [x] Permission pattern validation
+
+### ✅ Error Handling
+- [x] Graceful failure scenarios
+- [x] Invalid input handling
+- [x] Missing file scenarios
+- [x] Type validation and normalization errors
 
 ## Test Results
 
@@ -103,7 +123,7 @@ All tests should pass with the current impure implementation. The test runner wi
 
 Expected output:
 ```
-✅ Tests passed: 15/15
+✅ Tests passed: 18/18
 🎉 sopswarden is working correctly
 ```
 

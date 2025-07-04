@@ -86,9 +86,10 @@ rec {
         (name: {
           inherit name;
           value = mkSecret name {
-            inherit sopsFile defaultOwner defaultMode;
+            file = sopsFile;
             owner = defaultOwner;
             group = defaultGroup;
+            mode = defaultMode;
           };
         })
         (builtins.attrNames secrets)

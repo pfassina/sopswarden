@@ -160,6 +160,15 @@ echo -e "${YELLOW}=== INTEGRATION TESTS ===${NC}"
 run_test "$TEST_DIR/integration/test-runtime-sync.nix" "Runtime Sync" "Tests sync script generation and application access"
 run_test "$TEST_DIR/integration/test-rbw-states.nix" "RBW States" "Tests handling of rbw locked/unlocked/unavailable states"
 run_test "$TEST_DIR/integration/test-secret-path-resolution.nix" "Secret Path Resolution" "Tests end-to-end secret path resolution"
+run_test "$TEST_DIR/integration/test-filesystem-integration.nix" "Filesystem Integration" "Tests real file operations and path resolution"
+
+# Run security tests
+echo -e "${YELLOW}=== SECURITY TESTS ===${NC}"
+run_test "$TEST_DIR/security/test-file-permissions.nix" "File Permissions" "Tests security attributes and permission validation"
+
+# Run error handling tests
+echo -e "${YELLOW}=== ERROR HANDLING TESTS ===${NC}"
+run_test "$TEST_DIR/errors/test-error-handling.nix" "Error Handling" "Tests error scenarios and edge cases"
 
 # Test library functions directly
 echo -e "${YELLOW}=== LIBRARY TESTS ===${NC}"
