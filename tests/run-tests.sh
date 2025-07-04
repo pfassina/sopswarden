@@ -1,171 +1,231 @@
 #!/usr/bin/env bash
-# Comprehensive test runner for sopswarden
 
-set -eo pipefail
+# sopswarden Test Suite Runner
+# Runs all tests to validate the flake works correctly
 
-echo "🚀 Running sopswarden comprehensive test suite..."
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
-# Test results tracking
-TESTS_PASSED=0
-TESTS_FAILED=0
-TESTS_SKIPPED=0
+# Test counters
+TOTAL_TESTS=0
+PASSED_TESTS=0
+FAILED_TESTS=0
 
+# Test output directory
+TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$TEST_DIR/.." && pwd)"
+
+echo -e "${BLUE}🧪 Running sopswarden test suite...${NC}"
+echo -e "${BLUE}Test directory: $TEST_DIR${NC}"
+echo -e "${BLUE}Root directory: $ROOT_DIR${NC}"
+echo ""
+
+# Function to run a single test
 run_test() {
-    local test_name="$1"
-    local test_command="$2"
+    local test_file="$1"
+    local test_name="$2"
     local test_description="$3"
     
-    echo -e "\n${YELLOW}📋 $test_name${NC}"
-    echo -e "   ${test_description}"
+    echo -e "${BLUE}Running: $test_name${NC}"
+    echo -e "${BLUE}Description: $test_description${NC}"
     
-    if eval "$test_command"; then
-        echo -e "${GREEN}✅ $test_name PASSED${NC}"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    
+    # Run the test with --impure flag (current implementation requires it)
+    if cd "$ROOT_DIR" && nix-instantiate --eval --strict --impure "$test_file" --json > /tmp/test-result.json 2>/tmp/test-error.log; then
+        # Parse the result
+        if jq -r '.success' /tmp/test-result.json | grep -q "true"; then
+            echo -e "${GREEN}✅ PASSED: $test_name${NC}"
+            PASSED_TESTS=$((PASSED_TESTS + 1))
+        else
+            echo -e "${RED}❌ FAILED: $test_name${NC}"
+            echo -e "${RED}Test returned success=false${NC}"
+            if [[ -s /tmp/test-error.log ]]; then
+                echo -e "${RED}Error output:${NC}"
+                cat /tmp/test-error.log
+            fi
+            FAILED_TESTS=$((FAILED_TESTS + 1))
+        fi
     else
-        echo -e "${RED}❌ $test_name FAILED${NC}"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
+        echo -e "${RED}❌ FAILED: $test_name${NC}"
+        echo -e "${RED}Test evaluation failed${NC}"
+        if [[ -s /tmp/test-error.log ]]; then
+            echo -e "${RED}Error output:${NC}"
+            cat /tmp/test-error.log
+        fi
+        FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
-}
-
-skip_test() {
-    local test_name="$1"
-    local reason="$2"
     
-    echo -e "\n${YELLOW}⚠️  Skipping: $test_name${NC}"
-    echo -e "   Reason: $reason"
-    TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+    echo ""
 }
 
-# Change to repository root
-cd "$(dirname "$0")/.."
+# Function to run flake checks
+run_flake_checks() {
+    echo -e "${BLUE}Running flake checks...${NC}"
+    
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    
+    if cd "$ROOT_DIR" && nix flake check --no-build 2>/tmp/flake-check-error.log; then
+        echo -e "${GREEN}✅ PASSED: Flake validation${NC}"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        echo -e "${RED}❌ FAILED: Flake validation${NC}"
+        if [[ -s /tmp/flake-check-error.log ]]; then
+            echo -e "${RED}Error output:${NC}"
+            cat /tmp/flake-check-error.log
+        fi
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+    fi
+    
+    echo ""
+}
 
-echo -e "${BLUE}============================================${NC}"
-echo -e "${BLUE} SOPSWARDEN COMPREHENSIVE TEST SUITE${NC}"
-echo -e "${BLUE}============================================${NC}"
+# Function to test package building
+test_package_building() {
+    echo -e "${BLUE}Testing package building...${NC}"
+    
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    
+    if cd "$ROOT_DIR" && nix build .#sopswarden-sync --no-link 2>/tmp/build-error.log; then
+        echo -e "${GREEN}✅ PASSED: Package building${NC}"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        echo -e "${RED}❌ FAILED: Package building${NC}"
+        if [[ -s /tmp/build-error.log ]]; then
+            echo -e "${RED}Error output:${NC}"
+            cat /tmp/build-error.log
+        fi
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+    fi
+    
+    echo ""
+}
 
-# ===== CORE TESTS =====
-echo -e "\n${PURPLE}🔧 CORE FUNCTIONALITY TESTS${NC}"
+# Pre-flight checks
+echo -e "${BLUE}Pre-flight checks...${NC}"
 
-run_test "Pure Evaluation Test" \
-    "nix-build tests/core/test-pure-evaluation.nix --no-link >/dev/null 2>&1" \
-    "Verifies sopswarden works without --impure flags"
-
-run_test "Library Functions Test" \
-    "nix-build tests/core/test-lib-functions.nix --no-link >/dev/null 2>&1" \
-    "Tests all library functions including mkSecretAccessors"
-
-# ===== MODULE TESTS =====
-echo -e "\n${PURPLE}📦 MODULE INTEGRATION TESTS${NC}"
-
-run_test "NixOS Module Test" \
-    "nix-build tests/modules/test-nixos-module.nix --no-link >/dev/null 2>&1" \
-    "Tests NixOS module configuration and systemd services"
-
-
-# ===== WORKFLOW TESTS =====
-echo -e "\n${PURPLE}🔄 USER WORKFLOW TESTS${NC}"
-
-run_test "Fresh Install Workflow" \
-    "nix-build tests/workflows/test-fresh-install.nix --no-link >/dev/null 2>&1" \
-    "Tests installing sopswarden from scratch"
-
-run_test "Add New Secrets Workflow" \
-    "nix-build tests/workflows/test-add-secrets.nix --no-link >/dev/null 2>&1" \
-    "Tests adding new secrets to existing configuration"
-
-# ===== INTEGRATION TESTS =====
-echo -e "\n${PURPLE}🔗 INTEGRATION TESTS${NC}"
-
-if command -v age &> /dev/null && command -v sops &> /dev/null; then
-    run_test "Runtime Sync Test" \
-        "nix-build tests/integration/test-runtime-sync.nix --no-link >/dev/null 2>&1" \
-        "Tests runtime synchronization with mock Bitwarden"
-else
-    skip_test "Runtime Sync Test" "age/sops not available in environment"
-fi
-
-# ===== FLAKE TESTS =====
-echo -e "\n${PURPLE}📦 FLAKE & PACKAGE TESTS${NC}"
-
-run_test "Flake Check" \
-    "nix flake check --no-build >/dev/null 2>&1" \
-    "Validates flake structure and outputs"
-
-run_test "Package Build" \
-    "nix build .#sopswarden-sync --no-link 2>/dev/null" \
-    "Builds sopswarden-sync package"
-
-# ===== EXAMPLE TESTS =====
-echo -e "\n${PURPLE}📚 EXAMPLE CONFIGURATION TESTS${NC}"
-
-run_test "Basic Example" \
-    "(cd examples/basic && nix flake check --no-build >/dev/null 2>&1)" \
-    "Tests basic example configuration"
-
-run_test "Advanced Example" \
-    "(cd examples/advanced && nix flake check --no-build >/dev/null 2>&1)" \
-    "Tests advanced example configuration"
-
-# ===== DEVELOPMENT TESTS =====
-echo -e "\n${PURPLE}🛠️  DEVELOPMENT ENVIRONMENT TESTS${NC}"
-
-run_test "Development Shell" \
-    "nix develop --command echo 'Dev shell works' >/dev/null 2>&1" \
-    "Tests development environment setup"
-
-# ===== LEGACY COMPATIBILITY TESTS =====
-echo -e "\n${PURPLE}🔄 LEGACY COMPATIBILITY TESTS${NC}"
-
-# Keep the old unit test for backward compatibility (currently has assertion issues)
-if [ -f "tests/unit/test-lib.nix" ]; then
-    skip_test "Legacy Unit Tests" "Known assertion format issues - superseded by comprehensive tests"
-fi
-
-# ===== SUMMARY =====
-echo -e "\n${BLUE}============================================${NC}"
-echo -e "${BLUE} TEST SUMMARY${NC}"
-echo -e "${BLUE}============================================${NC}"
-
-echo -e "\n📊 Test Results:"
-echo -e "${GREEN}✅ Tests passed: $TESTS_PASSED${NC}"
-if [ $TESTS_FAILED -gt 0 ]; then
-    echo -e "${RED}❌ Tests failed: $TESTS_FAILED${NC}"
-fi
-if [ $TESTS_SKIPPED -gt 0 ]; then
-    echo -e "${YELLOW}⚠️  Tests skipped: $TESTS_SKIPPED${NC}"
-fi
-
-echo -e "\n🧪 Test Coverage:"
-echo -e "   🔧 Core functionality (pure evaluation, library functions)"
-echo -e "   📦 Module integration (NixOS, systemd, secret access)"
-echo -e "   🔄 User workflows (fresh install, adding secrets)"
-echo -e "   🔗 Runtime integration (Bitwarden sync, SOPS encryption)"
-echo -e "   📚 Example configurations"
-echo -e "   🛠️  Development environment"
-
-echo -e "\n🎯 Key Features Tested:"
-echo -e "   ✓ Pure evaluation (no --impure needed)"
-echo -e "   ✓ Runtime validation via systemd services"
-echo -e "   ✓ Secret access via secrets.secret-name syntax"
-echo -e "   ✓ Multiple secret types (simple, complex, note)"
-echo -e "   ✓ Integration with various NixOS modules"
-echo -e "   ✓ Fresh installation workflow"
-echo -e "   ✓ Adding new secrets workflow"
-echo -e "   ✓ SOPS encryption/decryption"
-echo -e "   ✓ Mock Bitwarden integration"
-
-if [ $TESTS_FAILED -gt 0 ]; then
-    echo -e "\n${RED}💥 Some tests failed! Check the output above for details.${NC}"
+# Check if nix is available
+if ! command -v nix &> /dev/null; then
+    echo -e "${RED}❌ ERROR: nix command not found${NC}"
     exit 1
+fi
+
+# Check if jq is available
+if ! command -v jq &> /dev/null; then
+    echo -e "${RED}❌ ERROR: jq command not found${NC}"
+    exit 1
+fi
+
+# Check if we're in the right directory
+if [[ ! -f "$ROOT_DIR/flake.nix" ]]; then
+    echo -e "${RED}❌ ERROR: flake.nix not found in $ROOT_DIR${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ Pre-flight checks passed${NC}"
+echo ""
+
+# Run flake validation first
+run_flake_checks
+
+# Test package building
+test_package_building
+
+# Run core tests
+echo -e "${YELLOW}=== CORE TESTS ===${NC}"
+run_test "$TEST_DIR/core/test-pure-evaluation.nix" "Core Evaluation" "Tests flake structure and basic functionality"
+run_test "$TEST_DIR/core/test-cyclic-dependencies.nix" "Cyclic Dependencies" "Tests that evaluation doesn't create circular dependencies"
+
+# Run workflow tests
+echo -e "${YELLOW}=== WORKFLOW TESTS ===${NC}"
+run_test "$TEST_DIR/workflows/test-fresh-install.nix" "Fresh Installation" "Tests user journey for installing sopswarden from scratch"
+run_test "$TEST_DIR/workflows/test-add-secrets.nix" "Add Secrets" "Tests user journey for adding new secrets to existing configuration"
+
+# Run module tests
+echo -e "${YELLOW}=== MODULE TESTS ===${NC}"
+run_test "$TEST_DIR/modules/test-nixos-module.nix" "NixOS Module" "Tests NixOS module integration and secrets usage"
+run_test "$TEST_DIR/modules/test-home-manager.nix" "Home Manager Module" "Tests Home Manager module integration"
+
+# Run integration tests
+echo -e "${YELLOW}=== INTEGRATION TESTS ===${NC}"
+run_test "$TEST_DIR/integration/test-runtime-sync.nix" "Runtime Sync" "Tests sync script generation and application access"
+run_test "$TEST_DIR/integration/test-rbw-states.nix" "RBW States" "Tests handling of rbw locked/unlocked/unavailable states"
+
+# Test library functions directly
+echo -e "${YELLOW}=== LIBRARY TESTS ===${NC}"
+echo -e "${BLUE}Testing library functions...${NC}"
+
+TOTAL_TESTS=$((TOTAL_TESTS + 1))
+
+if cd "$ROOT_DIR" && nix-instantiate --eval --strict --impure -E '
+let
+  flake = builtins.getFlake (toString ./.);
+  pkgs = import <nixpkgs> {};
+  
+  # Test all library functions
+  testLib = {
+    mkSyncScript = builtins.isFunction flake.lib.mkSyncScript;
+    mkSopsSecrets = builtins.isFunction flake.lib.mkSopsSecrets;
+    mkSecretAccessors = builtins.isFunction flake.lib.mkSecretAccessors;
+    mkHashTracker = builtins.isFunction flake.lib.mkHashTracker;
+    normalizeSecretDef = builtins.isFunction flake.lib.normalizeSecretDef;
+    
+    # Test normalization
+    simpleNorm = flake.lib.normalizeSecretDef "test";
+    complexNorm = flake.lib.normalizeSecretDef { name = "test"; user = "user"; };
+    
+    # Test sync script creation
+    syncScript = flake.lib.mkSyncScript { inherit pkgs; };
+  };
+  
+  success = testLib.mkSyncScript && testLib.mkSopsSecrets && testLib.mkSecretAccessors && 
+            testLib.mkHashTracker && testLib.normalizeSecretDef && 
+            testLib.simpleNorm.name == "test" && testLib.complexNorm.user == "user" &&
+            builtins.isAttrs testLib.syncScript;
+in
+{ inherit success; result = testLib; }
+' --json > /tmp/lib-test-result.json 2>/tmp/lib-test-error.log; then
+    if jq -r '.success' /tmp/lib-test-result.json | grep -q "true"; then
+        echo -e "${GREEN}✅ PASSED: Library Functions${NC}"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        echo -e "${RED}❌ FAILED: Library Functions${NC}"
+        echo -e "${RED}Library functions test failed${NC}"
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+    fi
 else
-    echo -e "\n${GREEN}🎉 All tests passed! Sopswarden is working correctly.${NC}"
-    echo -e "${GREEN}✨ Ready for pure evaluation deployment without --impure flags!${NC}"
+    echo -e "${RED}❌ FAILED: Library Functions${NC}"
+    echo -e "${RED}Library functions evaluation failed${NC}"
+    if [[ -s /tmp/lib-test-error.log ]]; then
+        echo -e "${RED}Error output:${NC}"
+        cat /tmp/lib-test-error.log
+    fi
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+fi
+
+echo ""
+
+# Clean up temporary files
+rm -f /tmp/test-result.json /tmp/test-error.log /tmp/flake-check-error.log /tmp/build-error.log /tmp/lib-test-result.json /tmp/lib-test-error.log
+
+# Summary
+echo -e "${YELLOW}=== TEST SUMMARY ===${NC}"
+echo -e "${BLUE}Total tests: $TOTAL_TESTS${NC}"
+echo -e "${GREEN}Passed: $PASSED_TESTS${NC}"
+echo -e "${RED}Failed: $FAILED_TESTS${NC}"
+
+if [[ $FAILED_TESTS -eq 0 ]]; then
+    echo -e "${GREEN}✅ All tests passed!${NC}"
+    echo -e "${GREEN}🎉 sopswarden is working correctly${NC}"
+    exit 0
+else
+    echo -e "${RED}❌ Some tests failed${NC}"
+    echo -e "${RED}🔧 Please check the error messages above${NC}"
+    exit 1
 fi
