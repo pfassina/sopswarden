@@ -141,6 +141,7 @@ test_package_building
 echo -e "${YELLOW}=== CORE TESTS ===${NC}"
 run_test "$TEST_DIR/core/test-pure-evaluation.nix" "Core Evaluation" "Tests flake structure and basic functionality"
 run_test "$TEST_DIR/core/test-cyclic-dependencies.nix" "Cyclic Dependencies" "Tests that evaluation doesn't create circular dependencies"
+run_test "$TEST_DIR/core/test-bootstrap-scenario.nix" "Bootstrap Scenario" "Tests system evaluation with non-existent files"
 run_test "$TEST_DIR/core/test-secret-accessors.nix" "Secret Accessors" "Tests mkSecretAccessors function and secrets.* pattern export"
 run_test "$TEST_DIR/core/test-sops-integration.nix" "SOPS Integration" "Tests mkSopsSecrets function and SOPS configuration generation"
 run_test "$TEST_DIR/core/test-change-detection.nix" "Change Detection" "Tests hash tracking and file monitoring functionality"

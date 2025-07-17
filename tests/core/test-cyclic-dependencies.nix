@@ -27,33 +27,39 @@ let
   # Test module evaluation without causing circular dependencies
   testModuleEvaluation =
     let
-      # Create a minimal configuration that doesn't trigger file reads
-      minimalConfig = { ... }: {
+      # Create a configuration with real paths that don't exist
+      realWorldConfig = { ... }: {
         imports = [ flake.nixosModules.default ];
 
         # Required for NixOS system evaluation
         system.stateVersion = "25.11";
 
-        # Enable sopswarden but don't trigger the problematic impure functions
+        # Enable sopswarden with paths that don't exist (bootstrap scenario)
         services.sopswarden = {
           enable = true;
 
-          # Define secrets but don't evaluate them yet
+          # Real paths that won't exist on fresh systems
+          sopsFile = "/var/lib/sopswarden/secrets.yaml";
+          sopsConfigFile = "/var/lib/sopswarden/.sops.yaml";
+          hashFile = "/var/lib/sopswarden/.last-sync-hash";
+
+          # Define secrets as users would
           secrets = {
             test-secret = "Test Item";
+            complex-secret = { name = "Complex"; user = "test@example.com"; };
           };
 
-          # Disable features that might cause circular dependencies
-          enableChangeDetection = false;
-          installPackages = false;
-          installSyncCommand = false;
+          # Enable all features to test real usage
+          enableChangeDetection = true;
+          installPackages = true;
+          installSyncCommand = true;
         };
       };
 
       # Evaluate the module options using nixosSystem for full module environment
       moduleOptions = flake.inputs.nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
-        modules = [ minimalConfig ];
+        modules = [ realWorldConfig ];
       };
     in
     {

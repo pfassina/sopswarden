@@ -3,7 +3,7 @@
 { config, pkgs, ... }:
 
 let
-  inherit (lib) types mkOption mkEnableOption mkIf mkMerge optional;
+  inherit (lib) types mkOption mkEnableOption mkIf mkMerge optional flatten;
   cfg = config.services.sopswarden;
   sopswardenLib = import ../lib { nixpkgs = lib; };
 
@@ -64,8 +64,8 @@ in
 
     # File paths
     sopsFile = mkOption {
-      type = types.path;
-      default = /var/lib/sopswarden/secrets.yaml;
+      type = types.str;
+      default = "/var/lib/sopswarden/secrets.yaml";
       description = "Path to the encrypted SOPS file";
     };
 
@@ -76,8 +76,8 @@ in
     };
 
     sopsConfigFile = mkOption {
-      type = types.path;
-      default = /var/lib/sopswarden/.sops.yaml;
+      type = types.str;
+      default = "/var/lib/sopswarden/.sops.yaml";
       description = "Path to the .sops.yaml configuration file";
     };
 
@@ -147,7 +147,7 @@ in
   };
 
   config = mkIf cfg.enable (mkMerge [
-    # Basic SOPS configuration
+    # Basic configuration (always applied when enabled)
     {
       # Create the sopswarden directory
       system.activationScripts.sopswarden-setup = {
@@ -159,17 +159,9 @@ in
         deps = [ ];
       };
 
-      sops = {
-        defaultSopsFile = cfg.sopsFile;
-        defaultSopsFormat = "yaml";
-
-        age = {
-          keyFile = cfg.ageKeyFile;
-          generateKey = true;
-        };
-
-        secrets = sopsSecrets;
-      };
+      # Always install sopswarden-sync when enabled to allow bootstrap
+      environment.systemPackages = [ syncScript ] ++ 
+        (if cfg.installPackages then flatten (sopswardenLib.defaultPackages pkgs) else []);
 
       # Export secrets for easy access in other modules
       _module.args = {
@@ -179,18 +171,51 @@ in
       };
     }
 
-    # Package installation
-    (mkIf cfg.installPackages {
-      environment.systemPackages = sopswardenLib.defaultPackages pkgs;
+    # SOPS configuration (only when secrets file exists)
+    (mkIf (builtins.pathExists cfg.sopsFile) {
+      sops = {
+        defaultSopsFile = cfg.sopsFile;
+        defaultSopsFormat = "yaml";
+        
+        # MUST be false: sopswarden stores secrets in /var/lib (outside Nix store)
+        # to enable dynamic updates via sopswarden-sync without rebuilding NixOS
+        validateSopsFiles = false;
+
+        age = {
+          keyFile = cfg.ageKeyFile;
+          generateKey = true;
+        };
+
+        secrets = sopsSecrets;
+      };
     })
 
-    # Sync command installation  
-    (mkIf cfg.installSyncCommand {
-      environment.systemPackages = [ syncScript ];
+    # Bootstrap warning when secrets file doesn't exist
+    (mkIf (!(builtins.pathExists cfg.sopsFile)) {
+      warnings = [
+        ''
+          ⚠️  sopswarden: No secrets file found at ${cfg.sopsFile}
+          
+          To initialize sopswarden:
+          1. Run 'sopswarden-sync' to fetch secrets from Bitwarden
+          2. Rebuild your system with 'nixos-rebuild switch --impure'
+          
+          The sopswarden-sync command is now available in your PATH.
+        ''
+      ];
+    })
+
+    # Debug: Show what secrets are configured
+    (mkIf (builtins.pathExists cfg.sopsFile) {
+      warnings = [
+        ''
+          🔍 Debug: sopswarden configured secrets: ${builtins.concatStringsSep ", " (builtins.attrNames cfg.secrets)}
+        ''
+      ];
     })
 
     # Change detection warnings
-    (mkIf cfg.enableChangeDetection {
+    (mkIf (cfg.enableChangeDetection && (builtins.pathExists cfg.sopsFile)) {
       warnings = optional hashTracker.hasChanged
         "⚠️  sopswarden: secrets file has changed since last sync. Run 'sopswarden-sync' to update encrypted secrets.";
     })

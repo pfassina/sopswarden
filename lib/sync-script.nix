@@ -30,7 +30,39 @@ in
   mkdir -p "$WORKING_DIR"
 
   # Work from the correct directory
-  cd "$WORKING_DIR"
+  if ! cd "$WORKING_DIR" 2>/dev/null; then
+      echo "Error: Cannot access $WORKING_DIR" >&2
+      echo "sopswarden-sync must be run as root: sudo sopswarden-sync" >&2
+      exit 1
+  fi
+
+  # Detect if running under sudo and preserve user's rbw session
+  RBW_USER="$USER"
+  REAL_HOME="$HOME"
+  if [ -n "$SUDO_USER" ]; then
+      RBW_USER="$SUDO_USER"
+      REAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+      echo "🔐 Running as root, using rbw session from user: $RBW_USER"
+  fi
+
+  # Set up age key file path for SOPS
+  if [ -n "$SUDO_USER" ]; then
+      # When running under sudo, use the original user's age key
+      SOPS_AGE_KEY_FILE="$REAL_HOME/.config/sops/age/keys.txt"
+  else
+      # When running as normal user, expand ~ properly
+      SOPS_AGE_KEY_FILE="''${AGE_KEY_FILE/#\~/$HOME}"
+  fi
+  export SOPS_AGE_KEY_FILE
+
+  # Function to run rbw as the original user
+  run_rbw() {
+      if [ -n "$SUDO_USER" ]; then
+          sudo -u "$SUDO_USER" "$RBW_COMMAND" "$@"
+      else
+          "$RBW_COMMAND" "$@"
+      fi
+  }
 
   # Check if secrets configuration has changed since last sync
   SECRETS_CONFIG='${secretsJson}'
@@ -56,8 +88,8 @@ in
   fi
 
   # Test rbw authentication
-  if ! "$RBW_COMMAND" ls &> /dev/null; then
-      echo "Error: rbw is not authenticated. Please run 'rbw login' first."
+  if ! run_rbw ls &> /dev/null; then
+      echo "Error: rbw is not authenticated. Please run 'rbw login' first (as $RBW_USER)."
       exit 1
   fi
 
@@ -66,15 +98,16 @@ in
   # Extract secret keys from the configuration
   secret_keys=$(echo "$SECRETS_CONFIG" | jq -r 'keys[]')
 
-  # Create temporary unencrypted YAML
-  temp_file=$(mktemp)
+  # Create temporary unencrypted YAML (with .yaml extension to match SOPS creation rules)
+  temp_file=$(mktemp --suffix=.yaml)
   echo "# Auto-generated from Bitwarden - $(date)" > "$temp_file"
 
   for key in $secret_keys; do
       echo "📡 Fetching: $key"
     
       # Get the secret definition (either string or object)
-      secret_def=$(echo "$SECRETS_CONFIG" | jq -c ".$key")
+      # Use bracket notation for keys that may contain special characters
+      secret_def=$(echo "$SECRETS_CONFIG" | jq -c ".[\$key]" --arg key "$key")
     
       # Parse the definition
       if echo "$secret_def" | jq -e 'type == "string"' >/dev/null; then
@@ -94,20 +127,20 @@ in
       # Fetch from bitwarden based on type
       if [ "$item_type" = "note" ]; then
           # For secure notes, use --field to get specific field
-          secret_value=$("$RBW_COMMAND" get "$name" --field "$field")
+          secret_value=$(run_rbw get "$name" --field "$field")
       elif [ -n "$user" ]; then
           # For login items with specific user
           if [ "$field" = "password" ]; then
-              secret_value=$("$RBW_COMMAND" get "$name" "$user")
+              secret_value=$(run_rbw get "$name" "$user")
           else
-              secret_value=$("$RBW_COMMAND" get "$name" "$user" --field "$field")
+              secret_value=$(run_rbw get "$name" "$user" --field "$field")
           fi
       else
           # For login items without specific user
           if [ "$field" = "password" ]; then
-              secret_value=$("$RBW_COMMAND" get "$name")
+              secret_value=$(run_rbw get "$name")
           else
-              secret_value=$("$RBW_COMMAND" get "$name" --field "$field")
+              secret_value=$(run_rbw get "$name" --field "$field")
           fi
       fi
     
@@ -142,9 +175,25 @@ in
   EOF
   fi
 
-  # Encrypt with sops
-  sops --encrypt "$temp_file" > "$SOPS_FILE"
+  # Debug: Show the unencrypted content before encryption
+  echo "🔍 Debug: Unencrypted YAML content:"
+  cat "$temp_file"
+  echo "🔍 End debug content"
+
+  # Encrypt with sops (environment variables are already set)
+  SOPS_CONFIG_PATH="$SOPS_CONFIG_FILE" sops --encrypt "$temp_file" > "$SOPS_FILE"
   rm "$temp_file"
+
+  # Verify the encrypted file can be read and contains our keys
+  echo "🔍 Verifying encrypted file..."
+  if SOPS_CONFIG_PATH="$SOPS_CONFIG_FILE" sops -d "$SOPS_FILE" >/dev/null 2>&1; then
+      echo "✅ Encrypted file is valid"
+      echo "🔍 Keys in encrypted file:"
+      SOPS_CONFIG_PATH="$SOPS_CONFIG_FILE" sops -d "$SOPS_FILE" | grep -E '^[a-zA-Z0-9_-]+:' | cut -d: -f1 | sed 's/^/  - /'
+  else
+      echo "❌ Error: Could not decrypt file for verification"
+      exit 1
+  fi
 
   # Update the hash file to track this sync
   echo -n "$SECRETS_HASH" > "$LAST_HASH_FILE"
